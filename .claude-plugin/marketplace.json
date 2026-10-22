@@ -1,0 +1,18 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "grunt-plugins",
+  "description": "Official Grunt plugins for Claude Code.",
+  "owner": {
+    "name": "Grunt"
+  },
+  "plugins": [
+    {
+      "name": "grunt",
+      "source": "./plugins/grunt",
+      "description": "Grunt MCP server plus skills for putting Grunt charts and tables into interactive HTML reports and PowerPoint decks.",
+      "category": "productivity",
+      "keywords": ["grunt", "charts", "tables", "powerpoint", "html", "reports"],
+      "homepage": "https://github.com/Altua/GruntPluginsOfficial"
+    }
+  ]
+}
