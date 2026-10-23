@@ -1,7 +1,7 @@
 {
   "name": "grunt",
-  "version": "0.2.0",
-  "description": "Grunt charts and tables in Claude Code: the Grunt MCP server plus skills for interactive HTML reports (grunt-html) and PowerPoint decks (grunt-pptx).",
+  "version": "0.3.0",
+  "description": "Grunt charts and tables for coding agents: the Grunt MCP server plus skills for interactive HTML reports (grunt-html) and PowerPoint decks (grunt-pptx).",
   "author": {
     "name": "Grunt"
   },

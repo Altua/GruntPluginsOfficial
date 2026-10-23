@@ -1,6 +1,6 @@
 ---
 name: grunt-pptx
-description: Insert Grunt charts and tables into PowerPoint (.pptx) decks as tagged Grunt objects, using the bundled Grunt MCP, permanent edit links, exact-size SVG downloads, batch slide assembly and rendered-deck checks. Use whenever Grunt assets go into a PPTX.
+description: Insert Grunt charts and tables into PowerPoint (.pptx) decks as tagged Grunt objects, using the Grunt MCP server, permanent edit links, exact-size SVG downloads, batch slide assembly and rendered-deck checks. Use whenever Grunt assets go into a PPTX. Requires a signed-in Grunt MCP connection, which the skill checks first.
 ---
 
 # Grunt charts and tables in PowerPoint
@@ -11,23 +11,61 @@ add-in that supports web assets can use those tags to load the complete Grunt
 model for editing. Without that add-in the object is a static picture. Do not
 claim native editing unless you tested it in the add-in.
 
-The helpers live in this skill's `scripts/` directory. Always call them by
-absolute path, for example `python "${CLAUDE_SKILL_DIR}/scripts/insert_chart.py"`,
-and keep the user's working files (SVGs, manifests, decks) in their own
-directory, never in the plugin folder.
+The helpers live in this skill's `scripts/` folder. In the commands below,
+`<skill-dir>` stands for the absolute path of the folder that contains this
+SKILL.md; replace it yourself, because it is not an environment variable. Keep
+the user's working files (SVGs, manifests, decks) in their own directory, never
+in the skill or plugin folder.
+
+## Before you start: check the Grunt connection
+
+Do this before planning, installing anything or writing files. The Grunt MCP
+server is `https://mcp.grunt.io/mcp`, and each user signs in with their own Grunt
+account.
+
+1. **Find the Grunt tools.** Look for tools whose names are, or end with,
+   `create_or_update_bar_chart`, `create_asset_link` and `get_rendering_fonts`.
+   Apps add their own prefixes to MCP tool names, so match the end of the name,
+   not the server's name. If your app loads tools on demand or lets you search
+   for tools, search for `create_asset_link` before deciding the tools are
+   missing.
+2. **Confirm the sign-in.** Call `get_rendering_fonts` once with no arguments. It
+   only reads; it creates and changes nothing.
+   - A list of font names: you are connected. Keep the list for choosing fonts.
+   - An authentication error (for example 401, 403, "unauthorized", "sign in" or
+     an expired token): you are not signed in. Go to step 3.
+   - Any other error: try once more. If it fails again, tell the user that Grunt
+     is not responding, quote the error, and stop.
+3. **If the tools are missing or you are not signed in, stop.** Do not draw the
+   charts another way, write placeholder images, install dependencies or go on
+   to later steps. Tell the user:
+   - Grunt isn't connected in this session.
+   - To connect, they add or turn on the Grunt MCP server
+     (`https://mcp.grunt.io/mcp`) in their app's MCP or connector settings and
+     sign in with their Grunt account. If you know the exact steps for the app
+     you are running in, give them; [CONNECT.md](CONNECT.md) lists some.
+   - They should tell you when they are done.
+
+   You cannot complete the sign-in yourself. Never ask the user for a password,
+   token, code or callback URL.
+4. **When the user says they are done,** repeat steps 1 and 2 once. If the tools
+   still don't appear, tell the user that the app may need to reload its MCP
+   servers (a new session or an app restart), and stop. Do not keep checking.
+
+If more than one Grunt server is connected, choose one and use it for the whole
+deliverable, so every asset is created and updated under the same account.
 
 ## One-time setup
 
 Python 3.10+ is required. Install the helper dependencies once:
 
 ```sh
-python -m pip install -r "${CLAUDE_SKILL_DIR}/requirements.txt"
+python -m pip install -r "<skill-dir>/requirements.txt"
 ```
 
 `resvg-py` renders the PNG fallback without system libraries. CairoSVG (with the
 native Cairo library) is used only if resvg-py is absent. LibreOffice is needed
-for `render_deck.py`. The Grunt MCP tools come from this plugin's **Grunt**
-server; if they are missing, ask the user to authenticate it with `/mcp`.
+for `render_deck.py`.
 
 ## Workflow
 
@@ -43,11 +81,11 @@ server; if they are missing, ask the user to authenticate it with `/mcp`.
    permanent JSON manifest source, pinned to the commit current when it was
    minted, so mint links after the asset is final.
 4. **Download the SVG at the placement size.** Append `&width=<px>&height=<px>`
-   to the `assetUrl` and write it to a private file with the Write tool — never
-   put the URL on a command line or in logs:
+   to the `assetUrl` and write it to a private file with a file-writing tool, not
+   a shell command — never put the URL on a command line or in logs:
 
    ```sh
-   python "${CLAUDE_SKILL_DIR}/scripts/download_chart.py" --url-file private/revenue.url --output assets/revenue.svg
+   python "<skill-dir>/scripts/download_chart.py" --url-file private/revenue.url --output assets/revenue.svg
    ```
 
    The helper follows the manifest's `links.svg.href`, checks HTTPS, response
@@ -68,7 +106,7 @@ server; if they are missing, ask the user to authenticate it with `/mcp`.
    ```
 
    ```sh
-   python "${CLAUDE_SKILL_DIR}/scripts/insert_chart.py" --pptx skeleton.pptx --output final.pptx --manifest placements.json --revision-policy pinned
+   python "<skill-dir>/scripts/insert_chart.py" --pptx skeleton.pptx --output final.pptx --manifest placements.json --revision-policy pinned
    ```
 
    The helper validates the whole batch, embeds the SVG bytes unchanged, writes
@@ -79,8 +117,8 @@ server; if they are missing, ask the user to authenticate it with `/mcp`.
 7. **Verify the saved deck.**
 
    ```sh
-   python "${CLAUDE_SKILL_DIR}/scripts/restore_assets.py" --pptx final.pptx --manifest final-assets.json
-   python "${CLAUDE_SKILL_DIR}/scripts/render_deck.py" --pptx final.pptx --output-dir render
+   python "<skill-dir>/scripts/restore_assets.py" --pptx final.pptx --manifest final-assets.json
+   python "<skill-dir>/scripts/render_deck.py" --pptx final.pptx --output-dir render
    ```
 
    `restore_assets.py` inventories asset IDs, commits, policy, edit-link presence
@@ -115,9 +153,11 @@ render axis and legend text in Noto Sans TC, which many PCs lack. Data-label
 `style` tokens (for example `"style": "Segoe UI"` on `segmentLabels`) and
 `settings.font.fontFamily` on tables do set the family; axis and legend text
 keep the default. Check the rendered slide and tell the user about any
-substitution that matters. When the server exposes `get_rendering_fonts`, call it before choosing
-a brand font and read its warnings. Otherwise prefer widely installed families
-(for example Segoe UI, Arial or Calibri) and confirm the rendered result.
+substitution that matters. Before choosing a brand font, check it against the
+`get_rendering_fonts` list from the connection check; the renderer substitutes
+families it lacks and reports them as warnings. Prefer families that are also
+widely installed (for example Segoe UI, Arial or Calibri) and confirm the
+rendered result.
 
 Choose the chart palette when authoring the Grunt asset (theme color names or
 explicit colors). Keep the original series colors and SVG bytes in the deck.
@@ -155,6 +195,6 @@ For a paired HTML report, see [HTML.md](HTML.md) and the `grunt-html` skill.
 ## Tests
 
 ```sh
-python "${CLAUDE_SKILL_DIR}/scripts/test_scripts.py"
-python -m unittest discover -s "${CLAUDE_SKILL_DIR}/scripts" -p "test_*.py"
+python "<skill-dir>/scripts/test_scripts.py"
+python -m unittest discover -s "<skill-dir>/scripts" -p "test_*.py"
 ```

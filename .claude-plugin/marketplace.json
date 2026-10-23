@@ -1,7 +1,7 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "grunt-plugins",
-  "description": "Official Grunt plugins for Claude Code.",
+  "description": "Official Grunt plugins.",
   "owner": {
     "name": "Grunt"
   },
