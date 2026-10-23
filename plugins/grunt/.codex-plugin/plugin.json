@@ -1,0 +1,26 @@
+{
+  "name": "grunt",
+  "version": "0.3.0",
+  "description": "Grunt charts and tables for coding agents: the Grunt MCP server plus skills for interactive HTML reports (grunt-html) and PowerPoint decks (grunt-pptx).",
+  "author": {
+    "name": "Grunt"
+  },
+  "homepage": "https://github.com/Altua/GruntPluginsOfficial",
+  "repository": "https://github.com/Altua/GruntPluginsOfficial",
+  "keywords": ["grunt", "charts", "tables", "powerpoint", "pptx", "html", "reports", "mcp"],
+  "skills": "./skills",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "Grunt",
+    "shortDescription": "Grunt charts in HTML reports and PowerPoint decks",
+    "longDescription": "Create Grunt charts and tables with the Grunt MCP server, then place them in PowerPoint decks (grunt-pptx) or interactive, self-contained HTML reports (grunt-html). Sign in with your own Grunt account.",
+    "developerName": "Grunt",
+    "category": "Productivity",
+    "capabilities": ["Read", "Write", "Interactive"],
+    "defaultPrompt": [
+      "Create a Grunt bar chart of quarterly revenue by region and put it on slide 2 of deck.pptx.",
+      "Build an HTML report with a Grunt line chart of monthly customers and a KPI table."
+    ],
+    "brandColor": "#00D6A8"
+  }
+}

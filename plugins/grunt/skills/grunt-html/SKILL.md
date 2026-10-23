@@ -1,16 +1,17 @@
 ---
 name: grunt-html
-description: Build self-contained, interactive HTML reports from Grunt charts and tables, using the bundled Grunt MCP, exact-size SVG snapshots, hover/keyboard value inspection, one-click chart updates and durable HTML saves. Use for HTML reports, dashboards and offline report files with Grunt assets.
+description: Build self-contained, interactive HTML reports from Grunt charts and tables, using the Grunt MCP server, exact-size SVG snapshots, hover/keyboard value inspection, one-click chart updates and durable HTML saves. Use for HTML reports, dashboards and offline report files with Grunt assets. Requires a signed-in Grunt MCP connection, which the skill checks first.
 ---
 
 # Grunt HTML reports
 
-Use the **Grunt** MCP server bundled with this plugin to create the charts and
-tables, then assemble the report with the bundled CLI:
-`node "${CLAUDE_SKILL_DIR}/scripts/report.mjs"`. It is not a script in the user's
-project. Read [PACKAGED.md](PACKAGED.md) for setup and the production origins, and
-[RUNTIME.md](RUNTIME.md) for the full runtime reference. If the Grunt tools are
-missing, ask the user to authenticate the Grunt server with `/mcp`.
+Use the **Grunt** MCP server to create the charts and tables, then assemble the
+report with the bundled CLI, `node "<skill-dir>/scripts/report.mjs"`. In the
+commands in this skill, `<skill-dir>` stands for the absolute path of the folder
+that contains this SKILL.md; replace it yourself, because it is not an
+environment variable. The CLI is not a script in the user's project. Read
+[PACKAGED.md](PACKAGED.md) for setup and the production origins, and
+[RUNTIME.md](RUNTIME.md) for the full runtime reference.
 
 The managed report assembler handles ordinary HTML/SVG. It keeps author
 layout/source and original SVG snapshots, discovers representations through
@@ -21,6 +22,44 @@ The managed report format supports static author HTML, inline CSS, embedded
 raster images, and explicit chart slots. Do not promise round-trip support for
 arbitrary scripts, widgets, or hand-edited rendered SVG. Preserve the user's
 original file during import.
+
+## Before you start: check the Grunt connection
+
+Do this before planning, installing anything or writing files. The Grunt MCP
+server is `https://mcp.grunt.io/mcp`, and each user signs in with their own Grunt
+account.
+
+1. **Find the Grunt tools.** Look for tools whose names are, or end with,
+   `create_or_update_bar_chart`, `create_asset_link` and `get_rendering_fonts`.
+   Apps add their own prefixes to MCP tool names, so match the end of the name,
+   not the server's name. If your app loads tools on demand or lets you search
+   for tools, search for `create_asset_link` before deciding the tools are
+   missing.
+2. **Confirm the sign-in.** Call `get_rendering_fonts` once with no arguments. It
+   only reads; it creates and changes nothing.
+   - A list of font names: you are connected. Keep the list for choosing fonts.
+   - An authentication error (for example 401, 403, "unauthorized", "sign in" or
+     an expired token): you are not signed in. Go to step 3.
+   - Any other error: try once more. If it fails again, tell the user that Grunt
+     is not responding, quote the error, and stop.
+3. **If the tools are missing or you are not signed in, stop.** Do not draw the
+   charts another way, write placeholder images, install dependencies or go on
+   to later steps. Tell the user:
+   - Grunt isn't connected in this session.
+   - To connect, they add or turn on the Grunt MCP server
+     (`https://mcp.grunt.io/mcp`) in their app's MCP or connector settings and
+     sign in with their Grunt account. If you know the exact steps for the app
+     you are running in, give them; [CONNECT.md](CONNECT.md) lists some.
+   - They should tell you when they are done.
+
+   You cannot complete the sign-in yourself. Never ask the user for a password,
+   token, code or callback URL.
+4. **When the user says they are done,** repeat steps 1 and 2 once. If the tools
+   still don't appear, tell the user that the app may need to reload its MCP
+   servers (a new session or an app restart), and stop. Do not keep checking.
+
+If more than one Grunt server is connected, choose one and use it for the whole
+deliverable, so every asset is created and updated under the same account.
 
 ## Size the layout before requesting charts
 
@@ -95,8 +134,8 @@ Write static author HTML containing empty named slots, for example:
 ```
 
 Reset the default `figure` margin in the report CSS. Then write a JSON
-configuration file with the Write tool (keep capability URLs out of command-line
-arguments and logs):
+configuration file with a file-writing tool, not a shell command (keep capability
+URLs out of command-line arguments and logs):
 
 ```json
 {
@@ -131,7 +170,7 @@ Placements are keyed by slot name. Several placements can share one binding (for
 example wide and narrow layouts). Run:
 
 ```sh
-node "${CLAUDE_SKILL_DIR}/scripts/report.mjs" assemble report.json report.html
+node "<skill-dir>/scripts/report.mjs" assemble report.json report.html
 ```
 
 Template paths resolve from the working directory. The assembler verifies view
@@ -281,7 +320,7 @@ offline. Check the chart, unchanged author text/layout, and permanent pinned
 source. A download starting does not prove a disk write completed.
 
 For agent regeneration, use
-`node "${CLAUDE_SKILL_DIR}/scripts/report.mjs" regenerate old.html new.html commits.json`,
+`node "<skill-dir>/scripts/report.mjs" regenerate old.html new.html commits.json`,
 where the JSON maps binding IDs to concrete commits. Omitted bindings stay
 pinned. No LLM layout recreation or live DOM serialization is needed. Do not
 claim chart updates refresh prose or existing PowerPoint files; review the

@@ -7,11 +7,13 @@ snapshots. It never serializes the running page or fetches latest during a save.
 
 ## Run
 
+`<skill-dir>` stands for the absolute path of the folder that contains SKILL.md.
+
 ```sh
-node "${CLAUDE_SKILL_DIR}/scripts/report.mjs" assemble report.json output.html
-node "${CLAUDE_SKILL_DIR}/scripts/report.mjs" regenerate output.html updated.html commits.json
-node "${CLAUDE_SKILL_DIR}/scripts/report.mjs" view-copy output.html view-copy.html
-node "${CLAUDE_SKILL_DIR}/scripts/report.mjs" detach output.html detached.html
+node "<skill-dir>/scripts/report.mjs" assemble report.json output.html
+node "<skill-dir>/scripts/report.mjs" regenerate output.html updated.html commits.json
+node "<skill-dir>/scripts/report.mjs" view-copy output.html view-copy.html
+node "<skill-dir>/scripts/report.mjs" detach output.html detached.html
 ```
 
 Node 22.22 or newer is required; the CLI is bundled and needs no `npm install`.

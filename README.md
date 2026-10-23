@@ -1,6 +1,8 @@
-# Grunt plugins for Claude Code
+# Grunt plugins
 
-Official [Claude Code](https://code.claude.com) plugins from Grunt.
+Official Grunt plugins for coding agents. The same plugin installs in
+[Claude Code](https://code.claude.com) and the Codex CLI, and its skills work in
+any agent that reads `SKILL.md` folders and can call MCP tools.
 
 | Plugin | What you get |
 | --- | --- |
@@ -8,7 +10,9 @@ Official [Claude Code](https://code.claude.com) plugins from Grunt.
 
 ## Install
 
-In Claude Code, add this marketplace and install the plugin:
+### Claude Code
+
+Add this marketplace and install the plugin:
 
 ```text
 /plugin marketplace add Altua/GruntPluginsOfficial
@@ -28,13 +32,39 @@ claude plugin marketplace add Altua/GruntPluginsOfficial
 claude plugin install grunt@grunt-plugins
 ```
 
-Then connect your Grunt account: run `/mcp`, select **plugin:grunt:Grunt** and
-complete the sign-in in your browser. Restart Claude Code or run
-`/reload-plugins` if the skills do not appear right away.
+### Codex CLI
+
+```sh
+codex plugin marketplace add Altua/GruntPluginsOfficial
+codex plugin add grunt@grunt-plugins
+```
+
+### Other agents
+
+Add the Grunt MCP server (`https://mcp.grunt.io/mcp`, streamable HTTP) in the
+agent's MCP settings, and copy the folders in
+[`plugins/grunt/skills`](plugins/grunt/skills) to wherever the agent loads skills
+from. Keep each skill folder whole; the scripts and runtimes are part of it.
+
+## Connect your Grunt account
+
+Each user signs in to the Grunt MCP server with their own Grunt account:
+
+- **Claude Code:** run `/mcp`, select **plugin:grunt:Grunt** and complete the
+  sign-in in your browser.
+- **Codex CLI:** run `codex mcp list` to find the Grunt server's name, then
+  `codex mcp login <name>`.
+- **Other agents:** sign in from the agent's MCP or connector settings.
+
+Some apps show the new tools only in a new session or after a restart. Both
+skills check the connection before they start and tell you what to do if Grunt
+is not connected; [`CONNECT.md`](plugins/grunt/skills/grunt-pptx/CONNECT.md) lists
+the steps they give.
 
 ## Use
 
-Ask in plain language, or invoke a skill directly:
+Ask in plain language, or name the skill in your request (in Claude Code you can
+also invoke it directly):
 
 - `/grunt:grunt-pptx` — "Create a Grunt bar chart of quarterly revenue by region and put it on slide 2 of deck.pptx."
 - `/grunt:grunt-html` — "Build an HTML report with a Grunt line chart of monthly customers and a KPI table."
@@ -46,7 +76,7 @@ Requirements on your machine:
   LibreOffice is used to render decks for checking.
 - **grunt-html:** Node.js 22.22+. No `npm install` needed.
 
-## Share with a team
+## Share with a team (Claude Code)
 
 Commit this to a project's `.claude/settings.json` so teammates are offered the
 marketplace and plugin when they trust the folder:
@@ -67,21 +97,29 @@ marketplace and plugin when they trust the folder:
 
 ## Updates
 
-Run `/plugin` → **Marketplaces** to update, or
-`claude plugin update grunt@grunt-plugins`. Third-party marketplaces do not
-auto-update unless you enable it.
+- **Claude Code:** run `/plugin` → **Marketplaces** to update, or
+  `claude plugin update grunt@grunt-plugins`. Third-party marketplaces do not
+  auto-update unless you enable it.
+- **Codex CLI:** run `codex plugin marketplace upgrade grunt-plugins`.
 
 ## Maintainers
 
-- Each plugin lives in `plugins/<name>/` and is listed in
-  `.claude-plugin/marketplace.json`.
-- Bump `version` in `plugins/grunt/.claude-plugin/plugin.json` for every release;
-  users on a pinned version receive changes only when it changes.
+- Each plugin lives in `plugins/<name>/` and is listed in both
+  `.claude-plugin/marketplace.json` (Claude Code) and
+  `.agents/plugins/marketplace.json` (Codex).
+- Each plugin has a Claude Code manifest (`.claude-plugin/plugin.json`) and a
+  Codex manifest (`.codex-plugin/plugin.json`). Bump `version` in both for every
+  release; users on a pinned version receive changes only when it changes.
+- Write skills for any agent: refer to the skill's folder as `<skill-dir>`
+  rather than a host variable, and describe tools by what they do rather than by
+  one host's tool names. The connection check and `CONNECT.md` are shared by
+  both skills and must stay identical.
 - Before pushing, run:
 
   ```sh
   claude plugin validate .
   claude plugin validate ./plugins/grunt
+  python -m unittest discover -s tests -p "test_*.py"
   python -m unittest discover -s plugins/grunt/skills/grunt-pptx/scripts -p "test_*.py"
   python plugins/grunt/skills/grunt-pptx/scripts/test_scripts.py
   ```

@@ -1,0 +1,20 @@
+{
+  "name": "grunt-plugins",
+  "interface": {
+    "displayName": "Grunt"
+  },
+  "plugins": [
+    {
+      "name": "grunt",
+      "source": {
+        "source": "local",
+        "path": "./plugins/grunt"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}
