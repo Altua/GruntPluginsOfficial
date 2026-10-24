@@ -6,7 +6,7 @@ any agent that reads `SKILL.md` folders and can call MCP tools.
 
 | Plugin | What you get |
 | --- | --- |
-| [`grunt`](plugins/grunt) | The **Grunt** MCP server (charts, tables and visual grids) plus two skills: **grunt-pptx** puts Grunt objects into PowerPoint decks, **grunt-html** builds interactive, self-contained HTML reports. |
+| [`grunt`](plugins/grunt) | The **Grunt** MCP server (charts, tables and visual grids) plus three skills: **grunt-powerpoint** makes and changes Grunt charts and tables inside PowerPoint, **grunt-pptx** builds .pptx files with Grunt objects outside PowerPoint, **grunt-html** builds interactive, self-contained HTML reports. |
 
 ## Install
 
@@ -56,10 +56,12 @@ Each user signs in to the Grunt MCP server with their own Grunt account:
   `codex mcp login <name>`.
 - **Other agents:** sign in from the agent's MCP or connector settings.
 
-Some apps show the new tools only in a new session or after a restart. Both
-skills check the connection before they start and tell you what to do if Grunt
-is not connected; [`CONNECT.md`](plugins/grunt/skills/grunt-pptx/CONNECT.md) lists
-the steps they give.
+Some apps show the new tools only in a new session or after a restart.
+**grunt-pptx** and **grunt-html** check the connection before they start and tell
+you what to do if Grunt is not connected;
+[`CONNECT.md`](plugins/grunt/skills/grunt-pptx/CONNECT.md) lists the steps they
+give. **grunt-powerpoint** uses the Grunt connector of the PowerPoint host it runs
+in, and tells you if Grunt's tools are missing.
 
 ## Use
 
@@ -68,9 +70,13 @@ also invoke it directly):
 
 - `/grunt:grunt-pptx` — "Create a Grunt bar chart of quarterly revenue by region and put it on slide 2 of deck.pptx."
 - `/grunt:grunt-html` — "Build an HTML report with a Grunt line chart of monthly customers and a KPI table."
+- **grunt-powerpoint**, in Claude for PowerPoint or another host with Grunt's
+  `deck_*` tools — "Add a waterfall chart of this year's profit bridge to slide 3."
 
 Requirements on your machine:
 
+- **grunt-powerpoint:** PowerPoint with Grunt running and signed in. Nothing
+  else to install.
 - **grunt-pptx:** Python 3.10+. The skill installs its Python packages from
   `requirements.txt` on first use (python-pptx, lxml, resvg-py, PyMuPDF).
   LibreOffice is used to render decks for checking.
@@ -113,7 +119,9 @@ marketplace and plugin when they trust the folder:
 - Write skills for any agent: refer to the skill's folder as `<skill-dir>`
   rather than a host variable, and describe tools by what they do rather than by
   one host's tool names. The connection check and `CONNECT.md` are shared by
-  both skills and must stay identical.
+  the file-building skills (grunt-pptx, grunt-html) and must stay identical.
+  grunt-powerpoint runs inside PowerPoint on the host's Grunt connector and has
+  neither; keep its body short, because the host loads it on most chart requests.
 - Before pushing, run:
 
   ```sh

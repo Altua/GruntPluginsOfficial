@@ -1,9 +1,13 @@
 ---
 name: grunt-pptx
-description: Insert Grunt charts and tables into PowerPoint (.pptx) decks as tagged Grunt objects, using the Grunt MCP server, permanent edit links, exact-size SVG downloads, batch slide assembly and rendered-deck checks. Use whenever Grunt assets go into a PPTX. Requires a signed-in Grunt MCP connection, which the skill checks first.
+description: For agents that build PowerPoint (.pptx) files programmatically, outside PowerPoint. Inserts Grunt charts and tables into .pptx files as tagged Grunt objects, using the Grunt MCP server, permanent edit links, exact-size SVG downloads, batch slide assembly and rendered-deck checks. Not for use inside PowerPoint (Claude for PowerPoint, or any host with Grunt's deck_* tools), where grunt-powerpoint applies. Requires a signed-in Grunt MCP connection, which the skill checks first.
 ---
 
-# Grunt charts and tables in PowerPoint
+# Grunt charts and tables in .pptx files
+
+This skill is for agents that build .pptx files with code, outside PowerPoint.
+Inside PowerPoint (Claude for PowerPoint, or any host with Grunt's `deck_*` tools),
+use the `grunt-powerpoint` skill instead.
 
 Every Grunt chart or table in a deck is a vector SVG picture (with a PNG fallback)
 tagged with its Grunt asset ID, pinned commit and permanent edit link. A Grunt

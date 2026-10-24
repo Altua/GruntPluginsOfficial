@@ -12,6 +12,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 PLUGIN = ROOT / "plugins" / "grunt"
 SKILLS = sorted(p for p in (PLUGIN / "skills").iterdir() if p.is_dir())
+# Skills that run inside an Office app use the app's Grunt connector, so they
+# skip the sign-in check and CONNECT.md that the file-building skills share.
+IN_APP_SKILLS = {"grunt-powerpoint"}
+FILE_SKILLS = [p for p in SKILLS if p.name not in IN_APP_SKILLS]
 CONNECTION_HEADING = "## Before you start: check the Grunt connection"
 
 # Host-specific wording allowed only in CONNECT.md, which lists steps per app.
@@ -67,14 +71,30 @@ class SkillTests(unittest.TestCase):
             self.assertIsNotNone(match, skill.name)
             self.assertEqual(match.group(1), skill.name)
 
+    def test_descriptions_are_plain_and_fit_the_skill_limit(self):
+        # Agent Skills allow descriptions of at most 1024 characters. A plain
+        # YAML scalar breaks on ": " or " #", so keep both out.
+        for skill in SKILLS:
+            text = (skill / "SKILL.md").read_text(encoding="utf-8")
+            match = re.search(r"^description: (.+)$", text, re.MULTILINE)
+            self.assertIsNotNone(match, skill.name)
+            description = match.group(1)
+            self.assertLessEqual(len(description), 1024, skill.name)
+            self.assertNotIn(": ", description, skill.name)
+            self.assertNotIn(" #", description, skill.name)
+
+    def test_in_app_skills_exist(self):
+        names = {s.name for s in SKILLS}
+        self.assertLessEqual(IN_APP_SKILLS, names)
+
     def test_connection_check_is_identical(self):
-        sections = {s.name: connection_section(s / "SKILL.md") for s in SKILLS}
+        sections = {s.name: connection_section(s / "SKILL.md") for s in FILE_SKILLS}
         first = next(iter(sections.values()))
         for name, section in sections.items():
             self.assertEqual(section, first, name)
 
     def test_connect_md_is_identical(self):
-        texts = {s.name: (s / "CONNECT.md").read_text(encoding="utf-8") for s in SKILLS}
+        texts = {s.name: (s / "CONNECT.md").read_text(encoding="utf-8") for s in FILE_SKILLS}
         first = next(iter(texts.values()))
         for name, text in texts.items():
             self.assertEqual(text, first, name)
