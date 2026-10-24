@@ -38,9 +38,10 @@ making a native chart.
 6. **Name the slide.** Pass `slideId` from your last read. On
    `desktop_slide_moved`, do what the message says: retry on the new slide number,
    or read the slide again. Read a slide again after another tool edits it.
-7. **Slides and text first.** Add slides with the host's tools or `deck_add_slide`,
-   and put titles and text on before placing charts. On a slide that already holds
-   Grunt objects, change text with `deck_set_text`, which keeps their `objectKey`s.
+7. **Slides and text first.** Add slides with `deck_add_slide`, which places one at
+   the position asked without a permission prompt, and put titles and text on before
+   placing charts. On a slide that already holds Grunt objects, change text with
+   `deck_set_text`, which keeps their `objectKey`s.
 8. **Check the result** with the host's own slide-viewing tool. Claude for
    PowerPoint passes images in MCP results (`deck_render_slide`, chart previews)
    to you as base64 text, not as images.
