@@ -141,6 +141,36 @@ for `render_deck.py`.
 For a single asset, `insert_chart.py --svg chart.svg --pptx in.pptx --output
 out.pptx --slide 0 --left 0.6 --top 1.3 --width 8 --height 4` is equivalent.
 
+## Excel workbooks on the user's computer
+
+When the user wants a chart or table from an Excel workbook on their computer
+kept connected, linked or updating, give the asset a connection to that file.
+Grunt in PowerPoint on that computer then refreshes it from the workbook.
+
+1. **Use the workbook's full path on the user's computer**, such as
+   `C:\Users\name\Documents\Sales.xlsx`. A path in a sandbox or cloud workspace,
+   such as an uploaded copy, is not on their computer: ask the user where the
+   original is, or make the asset without a connection and say so.
+2. **Read the range yourself**, header row included, with the values exactly as
+   the workbook holds them: no totals, reordering or rounding. With openpyxl,
+   open the workbook with `data_only=True` so formulas give their last calculated
+   values.
+3. **Create the asset** with those values as `data` (for a table, `cells`) and
+   `"dataImportDefinition": {"$type": "excel", "filePath": "<full path>", "range": "Sales!A1:E5"}`.
+   The range is worksheet-qualified, or a named range, and matches the data's
+   rows and columns.
+4. **Check the connection.** `inspect_object` with `dataStructure: "Source"` shows
+   `dataConnection.filePath`. If the create tool refuses `filePath`, this Grunt
+   server cannot keep local connections yet: create the asset without
+   `dataImportDefinition` and tell the user it is not connected.
+5. **Tell the user** that the chart shows the values read now, and that Grunt in
+   PowerPoint replaces them from the workbook when it refreshes, on the computer
+   where the file is. Moving or renaming the workbook breaks the connection;
+   Grunt's Data Connection Manager in PowerPoint can point it at the new place.
+
+Never send `dataImportDefinition` without `filePath` or `workbookUrl`: the server
+refuses it rather than make an asset that only looks connected.
+
 ## Sizing rules
 
 Ask Grunt to lay out each asset at its real placement size so labels, ticks and
