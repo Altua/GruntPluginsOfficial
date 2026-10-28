@@ -11,6 +11,10 @@
   PPTX with restore_assets.py and verify its identity and original bytes.
 - Test Office add-in open/edit/save/reopen before claiming native editing. Record
   compound-object limitations separately from static SVG appearance.
+- For an asset kept connected to Excel, confirm with `inspect_object`
+  (`dataStructure: "Source"`) that `dataConnection.filePath` names the workbook
+  on the user's computer, not a sandbox copy. Record whether a refresh from the
+  workbook was seen in PowerPoint with Grunt, or not tested.
 - For HTML, test live edit, replacement of an SVG, keyboard focus, wide/narrow
   resizing, print view and the actual PowerPoint download. See HTML.md.
 - Inventory final asset IDs/commits and project membership where supported. Keep

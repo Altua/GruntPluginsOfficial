@@ -23,7 +23,8 @@ making a native chart.
    `register_local_excel_connection` first: with `filePath` if they named the
    file's path, or, for a file they attached, its `fileName` and the SHA-256 of
    your copy, computed in code execution. Pass the `data` and
-   `dataImportDefinition` it returns unchanged to the `create_or_update_*` tool.
+   `dataImportDefinition` it returns unchanged to the `create_or_update_*` tool;
+   for `create_or_update_table`, `data.values` are its `cells.values`.
    Never send a `dataImportDefinition` without the `filePath` it returns. If the
    tool is missing, or cannot find the file, make the chart from your copy without
    `dataImportDefinition` and tell the user it is not connected.
