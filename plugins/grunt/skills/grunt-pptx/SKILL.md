@@ -149,13 +149,13 @@ Grunt in PowerPoint on that computer then refreshes it from the workbook.
 
 1. **Use the workbook's full path on the user's computer**, such as
    `C:\Users\name\Documents\Sales.xlsx`. A path in a sandbox or cloud workspace,
-   such as an uploaded copy, is not on their computer: ask the user where the
-   original is, or make the asset without a connection and say so.
+   such as an attached file's copy, is not on their computer; if you have only a
+   copy, see "Only a copy" below.
 2. **Read the range yourself**, header row included, with the values exactly as
    the workbook holds them: no totals, reordering or rounding. With openpyxl,
    open the workbook with `data_only=True` so formulas give their last calculated
    values.
-3. **Create the asset** with those values as `data` (for a table, `cells`) and
+3. **Create the asset** with those values as `data` (for a table, `cells.values`) and
    `"dataImportDefinition": {"$type": "excel", "filePath": "<full path>", "range": "Sales!A1:E5"}`.
    The range is worksheet-qualified, or a named range, and matches the data's
    rows and columns.
@@ -163,10 +163,34 @@ Grunt in PowerPoint on that computer then refreshes it from the workbook.
    `dataConnection.filePath`. If the create tool refuses `filePath`, this Grunt
    server cannot keep local connections yet: create the asset without
    `dataImportDefinition` and tell the user it is not connected.
-5. **Tell the user** that the chart shows the values read now, and that Grunt in
-   PowerPoint replaces them from the workbook when it refreshes, on the computer
-   where the file is. Moving or renaming the workbook breaks the connection;
-   Grunt's Data Connection Manager in PowerPoint can point it at the new place.
+5. **Download and insert as usual.** The connection is stored in the asset, so
+   the edit link, `download_chart.py` and `insert_chart.py` carry it; the
+   placements manifest needs nothing extra.
+6. **Tell the user** that the deck shows the values read now. The connection
+   takes effect only when the deck is opened in PowerPoint, on the computer
+   where the workbook is, with a Grunt add-in that supports web assets: it
+   imports the picture as a Grunt object, and from then on refreshes it from the
+   workbook. Until then the object is a static picture. Unless you opened the
+   deck in PowerPoint with Grunt yourself, say that you have not seen it
+   refresh. Moving or renaming the workbook breaks the connection; Grunt's Data
+   Connection Manager in PowerPoint can point it at the new place.
+
+**Only a copy.** When you have the workbook only as a copy, such as a file the
+user attached in a chat app, you cannot read the original yourself.
+
+- If the Grunt tools include `register_local_excel_connection`, call it with the
+  range and either the `filePath` the user gave or the copy's `fileName` and the
+  SHA-256 of its bytes. It works through Grunt running in the user's PowerPoint,
+  finds the original and returns the range's `data` and a `dataImportDefinition`
+  that names it. Pass both unchanged to the create tool (for a table, `data.values`
+  are its `cells.values`), then go on from step 4.
+- Some chat apps rename the copy, for example replacing spaces with
+  underscores. If the tool finds no file and the copy's name has underscores,
+  try once more with spaces in their place.
+- If the tool is missing or still finds nothing, ask the user for the
+  original's full path. Pass it to the tool as `filePath`, or, without the tool,
+  use it with the copy's values from steps 2 and 3. If they cannot give it, make
+  the asset without a connection and say so. Never use the copy's path.
 
 Never send `dataImportDefinition` without `filePath` or `workbookUrl`: the server
 refuses it rather than make an asset that only looks connected.
