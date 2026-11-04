@@ -82,15 +82,20 @@ python -m venv .grunt-venv
 On Windows the interpreter is `.grunt-venv\Scripts\python.exe`. Use it wherever
 the commands below say `python`. The helpers also run under `python -I`.
 
-`resvg-py` renders each picture's PNG fallback, and `pypdfium2` turns the
-rendered deck into PNG pages. `render_deck.py` also needs LibreOffice, a large
-separate install: ask the user before installing it
+`resvg-py` renders each picture's PNG fallback, and `pypdfium2` turns a
+LibreOffice render into PNG pages.
+
+On Windows, `render_deck.py` renders the deck with the user's PowerPoint, the
+renderer the recipient uses. It opens the deck read-only without a window, loads
+the user's add-ins (Grunt included), and leaves a PowerPoint the user already
+has open, and their presentations, as they were. Without PowerPoint (on macOS,
+on Linux, or when PowerPoint cannot be started) it falls back to LibreOffice, a
+large separate install: ask the user before installing it
 (`winget install TheDocumentFoundation.LibreOffice`,
 `brew install --cask libreoffice` or `sudo apt-get install libreoffice-impress`).
 Do not add LibreOffice's program folder to `PATH`, because it has its own
-`python`; pass `--soffice` when the helper does not find it. Without
-LibreOffice, skip `render_deck.py` and tell the user the slides were not
-rendered.
+`python`; pass `--soffice` when the helper does not find it. With neither, skip
+`render_deck.py` and tell the user the slides were not rendered.
 
 ## Workflow
 
@@ -168,9 +173,15 @@ rendered.
    - every asset is native (or a deliberate fallback) with the intended commit
      and edit link.
 
+   `render_deck.py` reports its `renderer`. If PowerPoint opens the deck but
+   cannot render it, the helper stops rather than fall back: the recipient's
+   PowerPoint would fail too, so fix the deck. `--renderer libreoffice` skips
+   PowerPoint.
+
    Build and check one chart slide and one table slide before scaling up a large
    deck. Tell the user which renderer you used (LibreOffice results do not prove
-   PowerPoint rendering) and whether native editing was tested.
+   PowerPoint rendering) and whether native editing was tested; a PowerPoint
+   render is not a test of editing.
 
 ## SVG fallback
 
