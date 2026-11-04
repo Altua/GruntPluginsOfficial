@@ -38,13 +38,17 @@ def render(pptx, output_dir, soffice=None, dpi=110):
     if not executable:
         raise RuntimeError("LibreOffice was not found. Install it or pass --soffice with its path.")
     output_dir.mkdir(parents=True, exist_ok=True)
-    completed = subprocess.run(
-        [executable, "--headless", "--norestore", "--convert-to", "pdf", "--outdir", str(output_dir), str(pptx)],
-        capture_output=True, text=True, timeout=300)
+    import tempfile
     pdf = output_dir / (pptx.stem + ".pdf")
-    if completed.returncode != 0 or not pdf.exists():
-        raise RuntimeError(f"LibreOffice conversion failed (exit {completed.returncode}). "
-                           "Close other LibreOffice windows and retry.")
+    with tempfile.TemporaryDirectory(prefix=".grunt-render-", dir=output_dir) as temporary:
+        completed = subprocess.run(
+            [executable, "--headless", "--norestore", "--convert-to", "pdf", "--outdir", temporary, str(pptx)],
+            capture_output=True, text=True, timeout=300)
+        converted_pdf = Path(temporary) / pdf.name
+        if completed.returncode != 0 or not converted_pdf.is_file():
+            raise RuntimeError(f"LibreOffice conversion failed (exit {completed.returncode}). "
+                               "Close other LibreOffice windows and retry.")
+        os.replace(converted_pdf, pdf)
     result = {"renderer": "LibreOffice", "pdf": str(pdf), "pages": []}
     try:
         import pymupdf

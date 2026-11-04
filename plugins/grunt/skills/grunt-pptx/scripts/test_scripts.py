@@ -1151,6 +1151,94 @@ def test_insert_chart_trust_origin():
 
 
 # ---------------------------------------------------------------------------
+# 6. Functional test: native placement, download_chart.py --format pptx -> insert_chart.py
+# ---------------------------------------------------------------------------
+
+def test_native_placement_functional():
+    """The default edit-link flow end to end through both CLIs (mocked network):
+    the URL file is consumed, links.pptx is followed unchanged, nothing secret is
+    printed, and the saved deck carries the add-in's native tags at svgBounds."""
+    ic = load_insert_chart()
+    if ic is None:
+        return
+    dc = load_module("download_chart")
+    from pptx import Presentation
+
+    object_key = "0f8fad5b-d9cb-469f-a165-70867728950e"
+    page_object = base64.b64encode(b"serialized page object").decode()
+    object_svg = '<svg xmlns="http://www.w3.org/2000/svg" width="720" height="442"><rect width="720" height="442"/></svg>'
+    pptx_href = f"https://assets.grunt.io/assets/pptx?assetId={FIXTURE_ASSET_ID}&commit={FIXTURE_COMMIT}&token={FIXTURE_TOKEN}"
+    manifest = {"schemaVersion": 1, "assetId": FIXTURE_ASSET_ID, "resolvedCommit": FIXTURE_COMMIT, "scope": "edit",
+                "links": {"self": {"href": FIXTURE_LINK, "type": "application/json", "schemaVersion": 1},
+                          "svg": {"href": "https://assets.grunt.io/assets/svg?opaque", "type": "image/svg+xml"},
+                          "pptx": {"href": pptx_href, "type": "application/json", "schemaVersion": 1}}}
+    native = {"schemaVersion": 1, "assetId": FIXTURE_ASSET_ID, "projectCommitKey": FIXTURE_COMMIT,
+              "objects": [{"pageObjectKey": object_key, "objectType": "Line plot Chart", "svg": object_svg,
+                           "svgBounds": {"x": 43.5, "y": 122.25, "width": 540, "height": 331.5},
+                           "pageObjectBase64": page_object}]}
+    requested = []
+
+    class Opener:
+        def open(self, req, timeout=None):
+            requested.append(req.full_url)
+            body = manifest if len(requested) == 1 else native
+            return _FakeResponse(json.dumps(body).encode(), {"Content-Type": "application/json"})
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        url_file = tmp_path / "revenue.url"
+        url_file.write_text(FIXTURE_LINK + "&x=58&y=163&width=720&height=442\n", encoding="utf-8")
+        original_build_opener, old_argv = dc.build_opener, sys.argv
+        dc.build_opener = lambda *a, **kw: Opener()
+        try:
+            sys.argv = ["download_chart.py", "--format", "pptx", "--url-file", str(url_file),
+                        "--output", str(tmp_path / "revenue.pptx.json")]
+            _, out, err, code = run_capturing(dc.main)
+        finally:
+            dc.build_opener, sys.argv = original_build_opener, old_argv
+        check(code is None, "download_chart.py --format pptx: a valid edit manifest downloads the native placement")
+        check(not url_file.exists(), "download_chart.py --format pptx: the URL file is deleted after reading")
+        check(requested[1:] == [pptx_href], "download_chart.py --format pptx: links.pptx.href is followed unchanged")
+        check(FIXTURE_TOKEN not in out + err and page_object not in out + err,
+              "download_chart.py --format pptx: prints neither the token nor the model payload")
+        check(json.loads(out)["objects"][0]["bounds_inches"] == {"left": 0.604, "top": 1.698, "width": 7.5, "height": 4.604},
+              "download_chart.py --format pptx: reports each object's slide rectangle in inches")
+
+        prs = Presentation()
+        prs.slides.add_slide(prs.slide_layouts[6])
+        prs.save(tmp_path / "in.pptx")
+        (tmp_path / "placements.json").write_text(json.dumps([{"pptx": "revenue.pptx.json", "slide": 0}]))
+        old_argv = sys.argv
+        try:
+            sys.argv = ["insert_chart.py", "--pptx", str(tmp_path / "in.pptx"), "--output", str(tmp_path / "out.pptx"),
+                        "--manifest", str(tmp_path / "placements.json")]
+            _, out, err, code = run_capturing(ic.main)
+        finally:
+            sys.argv = old_argv
+        check(code is None, "insert_chart.py: a native placement manifest inserts cleanly")
+        check(FIXTURE_TOKEN not in out + err and page_object not in out + err,
+              "insert_chart.py: native insertion prints neither the token nor the model payload")
+
+        ns = {"p": "http://schemas.openxmlformats.org/presentationml/2006/main",
+              "a": "http://schemas.openxmlformats.org/drawingml/2006/main"}
+        with zipfile.ZipFile(tmp_path / "out.pptx") as z:
+            tags = {t.get("name"): t.get("val") for n in z.namelist() if "tags/tag" in n and n.endswith(".xml")
+                    for t in ET.fromstring(z.read(n)).findall(".//p:tag", ns)}
+            xfrm = ET.fromstring(z.read("ppt/slides/slide1.xml")).find(".//p:sp/p:spPr/a:xfrm", ns)
+            rectangle = (int(xfrm.find("a:off", ns).get("x")), int(xfrm.find("a:off", ns).get("y")),
+                         int(xfrm.find("a:ext", ns).get("cx")), int(xfrm.find("a:ext", ns).get("cy")))
+            svg_media = [z.read(n) for n in z.namelist() if n.startswith("ppt/media/") and n.endswith(".svg")]
+        check(tags == {"GRUNT-PAGEOBJECT": object_key, "GRUNT-X-PAGEOBJECT": page_object,
+                       "GRUNT-WEB-ASSETID": FIXTURE_ASSET_ID, "GRUNT-WEB-ASSETCOMMIT": FIXTURE_COMMIT,
+                       "GRUNT-WEB-LINK": FIXTURE_LINK},
+              "insert_chart.py: a native shape has exactly the add-in tags plus the web identity "
+              "(no revision policy, shape bounds or version stamp; no empty optional payloads)")
+        check(rectangle == (552450, 1552575, 6858000, 4210050),
+              "insert_chart.py: the native shape sits exactly at svgBounds (points x 12700 EMU)")
+        check(svg_media == [object_svg.encode()], "insert_chart.py: the native object's SVG is embedded unchanged")
+
+
+# ---------------------------------------------------------------------------
 
 def main():
     print("Running grunt-pptx script tests...\n")
@@ -1175,6 +1263,9 @@ def main():
 
     print("-- insert_chart.py + --trust-origin functional test --")
     test_insert_chart_trust_origin()
+
+    print("-- native placement functional test (download_chart.py --format pptx -> insert_chart.py) --")
+    test_native_placement_functional()
 
     print(f"\n{_passed} check(s) passed, {len(_failures)} failed.")
     if _failures:
