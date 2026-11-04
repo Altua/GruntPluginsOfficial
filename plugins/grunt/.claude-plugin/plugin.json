@@ -1,7 +1,7 @@
 {
   "name": "grunt",
-  "version": "0.3.0",
-  "description": "Grunt charts and tables for coding agents: the Grunt MCP server plus skills for interactive HTML reports (grunt-html) and PowerPoint decks (grunt-pptx).",
+  "version": "0.4.0",
+  "description": "Grunt charts and tables for coding agents: the Grunt MCP server plus skills for charts inside PowerPoint (grunt-powerpoint), .pptx files built outside PowerPoint (grunt-pptx) and interactive HTML reports (grunt-html).",
   "author": {
     "name": "Grunt"
   },
