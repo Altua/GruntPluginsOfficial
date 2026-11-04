@@ -52,6 +52,17 @@ class ManifestTests(unittest.TestCase):
         mcp = read_json(PLUGIN / codex["mcpServers"])
         self.assertIn("Grunt", mcp["mcpServers"])
 
+    def test_icon_paths_exist(self):
+        # The directory shows these icons; a release without the files loses them.
+        claude = read_json(PLUGIN / ".claude-plugin" / "plugin.json")
+        interface = read_json(PLUGIN / ".codex-plugin" / "plugin.json")["interface"]
+        paths = [claude["icon"], interface["composerIcon"], interface["logo"]]
+        for path in paths:
+            self.assertTrue((PLUGIN / path).is_file(), path)
+        for agent in PLUGIN.glob("skills/*/agents/openai.yaml"):
+            for path in re.findall(r'^\s*icon_\w+: "([^"]+)"', agent.read_text(encoding="utf-8"), re.MULTILINE):
+                self.assertTrue((agent.parent.parent / path).is_file(), f"{agent.parent.parent.name}: {path}")
+
     def test_marketplaces_list_the_same_plugins(self):
         claude = read_json(ROOT / ".claude-plugin" / "marketplace.json")
         codex = read_json(ROOT / ".agents" / "plugins" / "marketplace.json")
