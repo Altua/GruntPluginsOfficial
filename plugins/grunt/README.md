@@ -1,6 +1,6 @@
 # Grunt plugin
 
-Bundles the **Grunt** MCP server with three skills that place Grunt charts and
+Bundles the **Grunt** MCP server with four skills that place Grunt charts and
 tables into presentations and reports. It has manifests for Claude Code (`.claude-plugin`) and
 Codex (`.codex-plugin`); the skills themselves work in any agent that can call
 MCP tools.
@@ -23,9 +23,10 @@ signing in.
 
 | Component | Description |
 | --- | --- |
-| MCP server `Grunt` | `https://mcp.grunt.io/mcp` (HTTP). Creates and updates bar, line, area, combined, scatter/bubble, pie/donut, mekko, dumbbell and waterfall charts and formatted tables, and mints permanent asset links. Each user signs in with their own Grunt account; `grunt-pptx` and `grunt-html` check the connection first, and [`CONNECT.md`](skills/grunt-pptx/CONNECT.md) lists the sign-in steps for common apps. |
+| MCP server `Grunt` | `https://mcp.grunt.io/mcp` (HTTP). Creates and updates bar, line, area, combined, scatter/bubble, pie/donut, mekko, dumbbell and waterfall charts and formatted tables, and mints permanent asset links. Each user signs in with their own Grunt account; `grunt-pptx`, `grunt-html` and `grunt-slides` check the connection first, and [`CONNECT.md`](skills/grunt-pptx/CONNECT.md) lists the sign-in steps for common apps. |
 | Skill `grunt-powerpoint` | For use inside PowerPoint (Claude for PowerPoint, or any host with Grunt's `deck_*` tools). Makes every chart and table a Grunt object by default, places it on the slide with `deck_insert_asset`, and moves, resizes, replaces and deletes Grunt objects in any open presentation. |
 | Skill `grunt-pptx` | For agents that build .pptx files outside PowerPoint. Downloads each asset at its exact slide size through a permanent edit link and inserts it as a tagged Grunt object (SVG with PNG fallback, asset ID, pinned commit and link), then inventories and renders the saved deck for checking. |
+| Skill `grunt-slides` | Puts Grunt charts and tables into Claude Slides decks as uploaded pictures whose alt text names the asset version, with text styles kept and no links in the deck. Changes a chart the user selects on a slide and refreshes it after edits in the Grunt editor. The deck's PowerPoint download can become editable Grunt objects again in a Grunt add-in that supports it. |
 | Skill `grunt-html` | Assembles a self-contained HTML report with exact-size SVG snapshots, hover and keyboard value inspection, one-click chart updates, durable **Save updated HTML**, regeneration and detached copies. |
 
 ## Notes
