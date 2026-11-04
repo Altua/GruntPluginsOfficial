@@ -135,7 +135,14 @@ Do not add LibreOffice's program folder to `PATH`, because it has its own
    from an asset host that cannot place assets yet), use the
    [SVG fallback](#svg-fallback) for that asset and tell the user.
 5. **Prepare the deck skeleton** (the user's template, or python-pptx). Leave the
-   chart rectangles empty.
+   chart rectangles empty. python-pptx cannot duplicate a slide, so build a new
+   slide from its layout rather than copying an existing one. If you do copy a
+   slide's XML, give the copy its own copy of every part it points to except the
+   layout and media (images, SVGs). Above all, never let two slides or shapes
+   share one `ppt/tags/tag*.xml` part. Grunt keeps its slide and object tags
+   there, such as `GRUNT-PAGE`. PowerPoint will not open a deck where two slides
+   share a tags part, its Repair does not fix it, and a LibreOffice render does
+   not catch it.
 6. **Insert all assets in one operation.** Write a placements manifest; paths are
    relative to the manifest and slides are zero-based. The rectangle comes from
    the download, so entries take no position or size:
