@@ -7,10 +7,12 @@
   renderer used. PNG fallback previews alone do not prove SVG compatibility.
 - Check requested formatting and font substitutions. Verify number formats and
   label visibility after a follow-up edit as well as initial creation.
-- Choose and record pinned/latest revision policy. Recover an asset from the saved
-  PPTX with restore_assets.py and verify its identity and original bytes.
-- Test Office add-in open/edit/save/reopen before claiming native editing. Record
-  compound-object limitations separately from static SVG appearance.
+- Record which assets are native and which use the SVG fallback (and its pinned/latest
+  revision policy). Recover an asset from the saved PPTX with restore_assets.py and
+  verify its identity and original bytes.
+- Test Office add-in open/edit/save/reopen before claiming native editing, including
+  that native shapes keep their positions. Record compound-object limitations
+  separately from static SVG appearance.
 - For an asset kept connected to Excel, confirm with `inspect_object`
   (`dataStructure: "Source"`) that `dataConnection.filePath` names the workbook
   on the user's computer, not a sandbox copy. Record whether a refresh from the

@@ -1,10 +1,16 @@
 #!/usr/bin/env python3
-"""Download a Grunt SVG through its permanent asset manifest.
+"""Download a Grunt SVG, or a native PowerPoint placement, through its permanent asset manifest.
 
 Read the source URL from stdin or --url-file; never put bearer tokens in argv.
 Source URLs return JSON. Follow the advertised trusted SVG delivery link
 without modifying it, and require a matching permanent pinned source in the SVG.
 Keep downloaded SVG bytes unchanged.
+
+--format pptx follows the edit manifest's links.pptx instead: the asset's objects
+laid out at the URL's x/y/width/height, each with its SVG and the add-in's native
+tag payloads. The validated response and the pinned permanent source are written
+to one private JSON file for insert_chart.py. The payloads are the customer's
+full chart model: never print or log them.
 
 HTTPS origins must be allowlisted (production: assets.grunt.io; --trust-origin
 opts in others). Redirects, wrong response types, oversized bodies, and identity
@@ -19,7 +25,10 @@ import tempfile
 import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
-from pptx_validation import svg_dimensions_points
+
+# `python -I` leaves the script's own folder off sys.path; the helpers import each other.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from pptx_validation import svg_dimensions_points, validate_native_placement, NATIVE_BOUNDS, NATIVE_OPTIONAL_PAYLOADS
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, parse_qs, urlsplit, urlunsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
@@ -29,6 +38,9 @@ import json
 # 10 MiB is generous headroom for even a very dense multi-object chart SVG while
 # still bounding memory/disk use against a misbehaving or malicious endpoint.
 MAX_RESPONSE_BYTES = 10 * 1024 * 1024
+# A native placement carries every object's SVG plus its serialized model.
+MAX_PPTX_RESPONSE_BYTES = 16 * 1024 * 1024
+REPRESENTATION_TYPES = {"svg": "image/svg+xml", "pptx": "application/json"}
 
 CARRIER_SRC_ATTR = "data-grunt-src"
 CARRIER_VERSION_ATTR = "data-grunt-link-version"
@@ -217,8 +229,9 @@ def _write_private_file(path: str, content: bytes) -> None:
         Path(temporary).unlink(missing_ok=True)
 
 
-def _fetch_bytes(url: str, media_type: str) -> bytes:
+def _fetch_bytes(url: str, media_type: str, limit: int | None = None, error_hint: str = "") -> bytes:
     content: bytes
+    limit = MAX_RESPONSE_BYTES if limit is None else limit
     try:
         opener = build_opener(_NoRedirectHandler())
         req = Request(url, headers={"User-Agent": "GruntSkill/2.0", "Accept": media_type})
@@ -231,16 +244,16 @@ def _fetch_bytes(url: str, media_type: str) -> bytes:
             content_length = resp.headers.get("Content-Length")
             if content_length is not None:
                 try:
-                    if int(content_length) > MAX_RESPONSE_BYTES:
-                        fail(f"Response Content-Length exceeds the {MAX_RESPONSE_BYTES}-byte cap")
+                    if int(content_length) > limit:
+                        fail(f"Response Content-Length exceeds the {limit}-byte cap")
                 except ValueError:
                     pass  # Malformed header; fall through to the read-time cap below.
 
-            content = resp.read(MAX_RESPONSE_BYTES + 1)
-            if len(content) > MAX_RESPONSE_BYTES:
-                fail(f"Response exceeded the {MAX_RESPONSE_BYTES}-byte cap")
+            content = resp.read(limit + 1)
+            if len(content) > limit:
+                fail(f"Response exceeded the {limit}-byte cap")
     except HTTPError as e:
-        fail(f"HTTP error (status {e.code})")
+        fail(f"HTTP error (status {e.code})" + (f". {error_hint}" if error_hint else ""))
     except URLError as e:
         category = "Timed out" if isinstance(e.reason, TimeoutError) else "Connection failed"
         fail(f"{category}")
@@ -272,12 +285,10 @@ def _checked_delivery_url(url, allowed_origins):
     return url
 
 
-def download_svg(url: str, output_path: str, allowed_origins, delivery_origins=()) -> bytes:
-    """Resolve a permanent manifest, then fetch its opaque SVG link.
-    The output is byte-identical to the SVG response; no temporary delivery
-    URL is substituted for the SVG's permanent pinned source reference.
-    Additional delivery origins must be explicitly configured by the caller.
-    """
+def _resolve_manifest(url: str, allowed_origins, representation: str):
+    """Fetch and check a permanent manifest. Returns the manifest, its pinned
+    permanent source and that source's identity, the source origin, and the
+    requested representation link (links.svg or links.pptx)."""
     try:
         parsed = urlsplit(url)
         query = parse_qs(parsed.query, keep_blank_values=True)
@@ -306,10 +317,18 @@ def download_svg(url: str, output_path: str, allowed_origins, delivery_origins=(
     links = manifest.get("links")
     if not isinstance(links, dict):
         fail("Asset manifest is missing its representation links.")
-    self_link, svg_link = links.get("self"), links.get("svg")
+    if representation == "pptx":
+        if manifest.get("scope") != "edit":
+            fail("Native placement needs an edit link, and this manifest is not edit scope. "
+                 "Mint an edit link, or use the SVG flow (omit --format pptx).")
+        if links.get("pptx") is None:
+            fail("Asset manifest has no links.pptx (this server does not offer native placement yet). "
+                 "Use the SVG flow: download with width/height and without --format pptx.")
+    self_link, link = links.get("self"), links.get(representation)
     if (not isinstance(self_link, dict) or self_link.get("type") != "application/json"
             or self_link.get("schemaVersion", 1) != 1
-            or not isinstance(svg_link, dict) or svg_link.get("type") != "image/svg+xml"):
+            or not isinstance(link, dict) or link.get("type") != REPRESENTATION_TYPES[representation]
+            or (representation == "pptx" and link.get("schemaVersion", 1) != 1)):
         fail("Asset manifest contains invalid representation links.")
     port = parsed.port
     origin = f"{parsed.scheme}://{parsed.hostname}" + (f":{port}" if port is not None else "")
@@ -319,7 +338,16 @@ def download_svg(url: str, output_path: str, allowed_origins, delivery_origins=(
             or pinned["asset_commit"] != manifest["resolvedCommit"].lower()
             or pinned["token"].lower() != identity["token"].lower()):
         fail("Asset manifest self link does not match the resolved asset version.")
-    identity = pinned
+    return manifest, pinned_source, pinned, origin, link
+
+
+def download_svg(url: str, output_path: str, allowed_origins, delivery_origins=()) -> bytes:
+    """Resolve a permanent manifest, then fetch its opaque SVG link.
+    The output is byte-identical to the SVG response; no temporary delivery
+    URL is substituted for the SVG's permanent pinned source reference.
+    Additional delivery origins must be explicitly configured by the caller.
+    """
+    _, _, identity, origin, svg_link = _resolve_manifest(url, allowed_origins, "svg")
     delivery = _checked_delivery_url(svg_link.get("href"), (origin,) + tuple(delivery_origins))
     content = _fetch_bytes(delivery, "image/svg+xml")
 
@@ -338,6 +366,44 @@ def download_svg(url: str, output_path: str, allowed_origins, delivery_origins=(
         fail("Downloaded SVG does not carry the resolved permanent source.")
     _write_private_file(output_path, content)
     return content
+
+
+def download_pptx(url: str, output_path: str, allowed_origins, delivery_origins=()) -> dict:
+    """Resolve an edit manifest, then fetch its opaque links.pptx native placement.
+    Writes the validated objects plus the pinned permanent source (for
+    GRUNT-WEB-LINK) to one private JSON file and returns that document. The
+    placement is never edited or constructed here; x/y/width/height come from
+    the source URL and are baked into links.pptx by the server.
+    """
+    _, pinned_source, identity, origin, pptx_link = _resolve_manifest(url, allowed_origins, "pptx")
+    delivery = _checked_delivery_url(pptx_link.get("href"), (origin,) + tuple(delivery_origins))
+    # The manifest just accepted this link, so an HTTP error here is about the placement: a 404
+    # when it would exceed the server's response bound, another status from an asset host that
+    # cannot place assets yet. The SVG link of the same manifest still works in both cases.
+    body = _fetch_bytes(delivery, "application/json", MAX_PPTX_RESPONSE_BYTES,
+                        error_hint="The native placement failed; use the SVG fallback "
+                                   "(omit --format pptx) for this asset.")
+    try:
+        document = json.loads(body)
+    except (ValueError, UnicodeError):
+        fail("Invalid native placement JSON.")
+    try:
+        objects = validate_native_placement(document)
+    except ValueError as error:
+        fail(f"Invalid native placement: {error}")
+    if (document["assetId"].lower() != identity["asset_id"]
+            or document["projectCommitKey"] != identity["asset_commit"]):
+        fail("Native placement does not match the resolved asset version.")
+    fields = ("pageObjectKey", "objectType", "svg", "pageObjectBase64") + NATIVE_OPTIONAL_PAYLOADS
+    saved = {
+        "schemaVersion": 1, "assetId": identity["asset_id"], "projectCommitKey": identity["asset_commit"],
+        "source": pinned_source,
+        "objects": [{name: item[name] for name in fields if item.get(name) is not None}
+                    | {"svgBounds": {name: item["svgBounds"][name] for name in NATIVE_BOUNDS}}
+                    for item in objects],
+    }
+    _write_private_file(output_path, json.dumps(saved).encode("utf-8"))
+    return saved
 
 
 # ---------------------------------------------------------------------------
@@ -689,12 +755,39 @@ def svg_font_families(svg_bytes: bytes) -> list:
     return families
 
 
+def native_summary(path: str, placement: dict) -> dict:
+    """Describe a saved native placement without its source link or payloads."""
+    families = []
+    for item in placement["objects"]:
+        for family in svg_font_families(item["svg"].encode("utf-8")):
+            if family not in families:
+                families.append(family)
+    return {
+        "placement_path": path,
+        "asset_id": placement["assetId"],
+        "asset_commit": placement["projectCommitKey"],
+        "object_count": len(placement["objects"]),
+        "objects": [{"page_object_key": item["pageObjectKey"], "object_type": item["objectType"],
+                     "bounds_inches": {key: round(item["svgBounds"][name] / 72, 3) for key, name in
+                                       (("left", "x"), ("top", "y"), ("width", "width"), ("height", "height"))}}
+                    for item in placement["objects"]],
+        "font_families": families,
+    }
+
+
 def main():
     parser = _NoEchoArgumentParser(
-        description="Download a Grunt chart SVG and extract identity metadata. "
+        description="Download a Grunt chart SVG and extract identity metadata, or (--format pptx) "
+        "a native PowerPoint placement. "
         "The URL is never a command-line argument -- pass --url-file or pipe it on stdin."
     )
-    parser.add_argument("--output", required=True, help="Output path for the SVG file")
+    parser.add_argument("--output", required=True,
+                        help="Output path for the SVG file, or for the private native placement JSON with --format pptx")
+    parser.add_argument(
+        "--format", choices=("svg", "pptx"), default="svg",
+        help="svg (default) follows links.svg. pptx follows an edit manifest's links.pptx: "
+             "the URL carries x/y/width/height and the output feeds insert_chart.py's {\"pptx\": ...} placements.",
+    )
     parser.add_argument(
         "--url-file", default=None,
         help="Path to a file containing the download URL (one line). Deleted "
@@ -720,7 +813,7 @@ def main():
     parser.add_argument(
         "--trust-delivery-origin", action="append", default=[],
         type=_validate_trust_origin, metavar="ORIGIN",
-        help="Additional HTTPS origin for manifest-advertised SVG delivery only. "
+        help="Additional HTTPS origin for manifest-advertised SVG or native placement delivery only. "
              "Repeatable. Does not trust permanent sources or SVG carriers. "
              "Same-origin delivery is allowed by default.",
     )
@@ -732,6 +825,11 @@ def main():
     for origin in trusted_origins:
         if origin not in allowed_origins:
             allowed_origins = allowed_origins + (origin,)
+
+    if args.format == "pptx":
+        placement = download_pptx(url, args.output, allowed_origins, args.trust_delivery_origin)
+        print(json.dumps(native_summary(args.output, placement), indent=2))
+        return
 
     svg_bytes = download_svg(url, args.output, allowed_origins, args.trust_delivery_origin)
     metadata = parse_svg_metadata(svg_bytes, extra_trusted_origins=trusted_origins)

@@ -1,6 +1,6 @@
 ---
 name: grunt-pptx
-description: For agents that build PowerPoint (.pptx) files programmatically, outside PowerPoint. Inserts Grunt charts and tables into .pptx files as tagged Grunt objects, using the Grunt MCP server, permanent edit links, exact-size SVG downloads, batch slide assembly and rendered-deck checks. Not for use inside PowerPoint (Claude for PowerPoint, or any host with Grunt's deck_* tools), where grunt-powerpoint applies. Requires a signed-in Grunt MCP connection, which the skill checks first.
+description: For agents that build PowerPoint (.pptx) files programmatically, outside PowerPoint. Inserts Grunt charts and tables into .pptx files as native Grunt objects, using the Grunt MCP server, permanent edit links, exact-placement downloads, batch slide assembly and rendered-deck checks. Not for use inside PowerPoint (Claude for PowerPoint, or any host with Grunt's deck_* tools), where grunt-powerpoint applies. Requires a signed-in Grunt MCP connection, which the skill checks first.
 ---
 
 # Grunt charts and tables in .pptx files
@@ -10,16 +10,19 @@ Inside PowerPoint (Claude for PowerPoint, or any host with Grunt's `deck_*` tool
 use the `grunt-powerpoint` skill instead.
 
 Every Grunt chart or table in a deck is a vector SVG picture (with a PNG fallback)
-tagged with its Grunt asset ID, pinned commit and permanent edit link. A Grunt
-add-in that supports web assets can use those tags to load the complete Grunt
-model for editing. Without that add-in the object is a static picture. Do not
-claim native editing unless you tested it in the add-in.
+tagged with its Grunt asset ID, pinned commit and permanent edit link. By default
+each one also carries the Grunt add-in's own object tags, so the deck opens like
+one the add-in saved: nothing is downloaded on first open, so large decks do not
+freeze, the deck works offline, and every Grunt add-in user can edit the charts
+without the `FetchWebAssetsOnLoad` flag. When the server offers no native
+placement, use the [SVG fallback](#svg-fallback). Without the add-in every object
+is a static picture. Do not claim native editing unless you tested it in the add-in.
 
 The helpers live in this skill's `scripts/` folder. In the commands below,
 `<skill-dir>` stands for the absolute path of the folder that contains this
 SKILL.md; replace it yourself, because it is not an environment variable. Keep
-the user's working files (SVGs, manifests, decks) in their own directory, never
-in the skill or plugin folder.
+the user's working files (downloads, manifests, decks) in their own directory,
+never in the skill or plugin folder.
 
 ## Before you start: check the Grunt connection
 
@@ -61,21 +64,45 @@ deliverable, so every asset is created and updated under the same account.
 
 ## One-time setup
 
-Python 3.10+ is required. Install the helper dependencies once:
+The helpers need Python 3.10+ and the packages in `requirements.txt`, pinned to
+the versions they are tested with. Check whether your Python has them:
 
 ```sh
-python -m pip install -r "<skill-dir>/requirements.txt"
+python -c "import pptx, lxml, resvg_py, pypdfium2"
 ```
 
-`resvg-py` renders the PNG fallback without system libraries. CairoSVG (with the
-native Cairo library) is used only if resvg-py is absent. LibreOffice is needed
-for `render_deck.py`.
+If it does not, create a virtual environment in the user's working folder, not
+in the skill folder, and install them there (about 40 MB):
+
+```sh
+python -m venv .grunt-venv
+.grunt-venv/bin/python -m pip install -r "<skill-dir>/requirements.txt"
+```
+
+On Windows the interpreter is `.grunt-venv\Scripts\python.exe`. Use it wherever
+the commands below say `python`. The helpers also run under `python -I`.
+
+`resvg-py` renders each picture's PNG fallback, and `pypdfium2` turns a
+LibreOffice render into PNG pages.
+
+On Windows, `render_deck.py` renders the deck with the user's PowerPoint, the
+renderer the recipient uses. It opens the deck read-only without a window, loads
+the user's add-ins (Grunt included), and leaves a PowerPoint the user already
+has open, and their presentations, as they were. Without PowerPoint (on macOS,
+on Linux, or when PowerPoint cannot be started) it falls back to LibreOffice, a
+large separate install: ask the user before installing it
+(`winget install TheDocumentFoundation.LibreOffice`,
+`brew install --cask libreoffice` or `sudo apt-get install libreoffice-impress`).
+Do not add LibreOffice's program folder to `PATH`, because it has its own
+`python`; pass `--soffice` when the helper does not find it. With neither, skip
+`render_deck.py` and tell the user the slides were not rendered.
 
 ## Workflow
 
 1. **Plan each placement first.** Decide every asset's final slide rectangle in
-   inches (a 16:9 slide is 13.333 × 7.5 in). The render size in CSS pixels is
-   inches × 96: a 7.5 × 4.6 in placement is 720 × 442 px. A table across a
+   inches (a 16:9 slide is 13.333 × 7.5 in). Positions and sizes in CSS pixels
+   are inches × 96, rounded: a 7.5 × 4.6 in chart 0.6 in from the left and 1.7 in
+   from the top is `x=58&y=163&width=720&height=442`. A table across a
    widescreen slide is about 12.1 in (1162 px) wide.
 2. **Create the assets** with the Grunt MCP `create_or_update_*` tools. Keep each
    `assetId` and the latest `assetCommit`.
@@ -84,40 +111,51 @@ for `render_deck.py`.
    same deck; mint a new one for a different deck. Its `assetUrl` is the
    permanent JSON manifest source, pinned to the commit current when it was
    minted, so mint links after the asset is final.
-4. **Download the SVG at the placement size.** Append `&width=<px>&height=<px>`
+4. **Download each placement.** Append `&x=<px>&y=<px>&width=<px>&height=<px>`
    to the `assetUrl` and write it to a private file with a file-writing tool, not
    a shell command — never put the URL on a command line or in logs:
 
    ```sh
-   python "<skill-dir>/scripts/download_chart.py" --url-file private/revenue.url --output assets/revenue.svg
+   python "<skill-dir>/scripts/download_chart.py" --format pptx --url-file private/revenue.url --output assets/revenue.pptx.json
    ```
 
-   The helper follows the manifest's `links.svg.href`, checks HTTPS, response
-   types, redirects, size and identity, deletes the URL file after reading it,
-   and prints no tokens. It reports `svg_width`/`svg_height` in points
-   (px × 0.75) and the SVG's `font_families`; confirm both match the plan.
+   The helper follows the manifest's `links.pptx.href` unchanged, checks HTTPS,
+   response types, redirects, size and identity, deletes the URL file after
+   reading it, and prints no tokens or chart data. It reports each object's type
+   and slide rectangle in inches and the SVG `font_families`; confirm both match
+   the plan. One asset can return several objects (for example a chart and its
+   legend); each becomes its own shape. Every placement of an asset, including a
+   repeat on another slide, needs its own download at its own position. Place an
+   asset at most once per slide, and an asset with several objects at most once
+   per deck, counting its other versions and duplicates: the add-in can bind a
+   repeated legend to another chart. For another copy, create a new asset (a
+   duplicate keeps the original's object keys). If the helper reports no
+   `links.pptx` (an older server), or the native download fails with any HTTP
+   error (a 404 for an asset too large for a native placement, another status
+   from an asset host that cannot place assets yet), use the
+   [SVG fallback](#svg-fallback) for that asset and tell the user.
 5. **Prepare the deck skeleton** (the user's template, or python-pptx). Leave the
    chart rectangles empty.
 6. **Insert all assets in one operation.** Write a placements manifest; paths are
-   relative to the manifest, positions and sizes are inches, slides are
-   zero-based:
+   relative to the manifest and slides are zero-based. The rectangle comes from
+   the download, so entries take no position or size:
 
    ```json
    [
-     {"svg": "assets/revenue.svg", "slide": 0, "left": 0.6, "top": 1.7, "width": 7.5, "height": 4.6},
-     {"svg": "assets/kpi-table.svg", "slide": 1, "left": 0.6, "top": 1.7, "width": 12.1, "height": 4.4}
+     {"pptx": "assets/revenue.pptx.json", "slide": 0},
+     {"pptx": "assets/kpi-table.pptx.json", "slide": 1}
    ]
    ```
 
    ```sh
-   python "<skill-dir>/scripts/insert_chart.py" --pptx skeleton.pptx --output final.pptx --manifest placements.json --revision-policy pinned
+   python "<skill-dir>/scripts/insert_chart.py" --pptx skeleton.pptx --output final.pptx --manifest placements.json
    ```
 
-   The helper validates the whole batch, embeds the SVG bytes unchanged, writes
-   the `GRUNT-WEB-*` tags, and saves atomically. `--fit contain` (default)
-   centers without distortion; `--fit exact` requires a matching aspect ratio.
-   Unknown fields, off-slide placements and invalid indexes are rejected — fix
-   the request rather than bypassing validation.
+   The helper validates the whole batch, also against the native objects already
+   in the input deck, embeds each object's SVG unchanged at its exact rectangle,
+   writes the native and `GRUNT-WEB-*` tags, and saves atomically. Unknown
+   fields, off-slide rectangles and invalid indexes are rejected — re-download
+   to move or resize, rather than bypassing validation.
 7. **Verify the saved deck.**
 
    ```sh
@@ -125,21 +163,51 @@ for `render_deck.py`.
    python "<skill-dir>/scripts/render_deck.py" --pptx final.pptx --output-dir render
    ```
 
-   `restore_assets.py` inventories asset IDs, commits, policy, edit-link presence
-   and placements without printing tokens. Then work through
-   [ACCEPTANCE.md](ACCEPTANCE.md):
+   `restore_assets.py` inventories asset IDs, commits, native object keys,
+   policy, edit-link presence and placements without printing tokens or chart
+   data. Then work through [ACCEPTANCE.md](ACCEPTANCE.md):
    - values, units and headline claims match the source data;
    - every rendered slide is readable at presentation size, with no clipping,
      distortion or overlap with slide text;
    - fonts render as intended or the substitution is acceptable;
-   - every asset has the intended commit, revision policy and edit link.
+   - every asset is native (or a deliberate fallback) with the intended commit
+     and edit link.
+
+   `render_deck.py` reports its `renderer`. If PowerPoint opens the deck but
+   cannot render it, the helper stops rather than fall back: the recipient's
+   PowerPoint would fail too, so fix the deck. `--renderer libreoffice` skips
+   PowerPoint.
 
    Build and check one chart slide and one table slide before scaling up a large
    deck. Tell the user which renderer you used (LibreOffice results do not prove
-   PowerPoint rendering) and whether native editing was tested.
+   PowerPoint rendering) and whether native editing was tested; a PowerPoint
+   render is not a test of editing.
 
-For a single asset, `insert_chart.py --svg chart.svg --pptx in.pptx --output
-out.pptx --slide 0 --left 0.6 --top 1.3 --width 8 --height 4` is equivalent.
+## SVG fallback
+
+Use it only when the manifest has no `links.pptx` or the native download of that
+asset fails. The fallback shapes carry just
+the `GRUNT-WEB-*` tags: an add-in with web-asset support downloads each model on
+first open, one at a time while PowerPoint waits, so large fallback decks are
+slow to open. Tell the user.
+
+- Append only `&width=<px>&height=<px>` and omit `--format`. The helper follows
+  `links.svg` and reports `svg_width`/`svg_height` in points (px × 0.75) and
+  `font_families`:
+
+  ```sh
+  python "<skill-dir>/scripts/download_chart.py" --url-file private/revenue.url --output assets/revenue.svg
+  ```
+
+- Placements give the rectangle in inches, and may sit in the same manifest as
+  native ones:
+  `{"svg": "assets/revenue.svg", "slide": 0, "left": 0.6, "top": 1.7, "width": 7.5, "height": 4.6}`.
+  `--fit contain` (default) centers without distortion; `--fit exact` requires a
+  matching aspect ratio.
+- `--revision-policy pinned` (default) imports the saved commit; `latest` adopts
+  the latest version at first import. It does not apply to native shapes.
+- For a single asset, `insert_chart.py --svg chart.svg --pptx in.pptx --output
+  out.pptx --slide 0 --left 0.6 --top 1.3 --width 8 --height 4` is equivalent.
 
 ## Excel workbooks on the user's computer
 
@@ -198,7 +266,8 @@ refuses it rather than make an asset that only looks connected.
 ## Sizing rules
 
 Ask Grunt to lay out each asset at its real placement size so labels, ticks and
-legends adapt. Do not shrink a full-slide SVG into a half-slide box or enlarge a
+legends adapt; a native download is always laid out at its planned rectangle. In
+the fallback, do not shrink a full-slide SVG into a half-slide box or enlarge a
 compact one; the same asset at substantially different sizes needs separate
 downloads of the same pinned commit. Matching aspect ratio alone is not enough.
 
@@ -224,29 +293,33 @@ put lasting emphasis in the chart or an annotation.
 
 ## Link and identity rules
 
-- Use only the plain SVG advertised by the permanent manifest. Never insert
-  browser snapshot SVGs with `data-grunt-scope` CSS (the helper rejects them) and
-  never strip or rewrite SVG bytes to get past a check.
-- The SVG's `data-grunt-src` carries the permanent pinned source; the helper
-  copies it into `GRUNT-WEB-LINK`. Never replace it with a delivery URL.
-- `pinned` (default) imports the saved commit. Pass `--revision-policy latest`
-  only when the deck should adopt the latest version at first native import.
+- Use only the representations advertised by the permanent manifest
+  (`links.pptx`, or `links.svg` in the fallback), and never edit or construct
+  their URLs. Never insert browser snapshot SVGs with `data-grunt-scope` CSS (the
+  helpers reject them) and never strip or rewrite SVG bytes to get past a check.
+- The manifest's pinned permanent source (`links.self`, which a fallback SVG
+  carries as `data-grunt-src`) goes into `GRUNT-WEB-LINK`. Never replace it with
+  a delivery URL.
+- A native shape is a snapshot of the asset's commit when the deck was built.
+  Later edits to the asset do not reach it; rebuild the placement to update it.
 - `https://assets.grunt.io` is trusted by default. Other capability origins need
-  an explicit `--trust-origin`; a separate SVG delivery host needs
+  an explicit `--trust-origin`; a separate SVG or placement delivery host needs
   `--trust-delivery-origin`. Never trust an origin because it appears in a
   response.
 - `asset_id`/`asset_commit` manifest overrides (or `--asset-id`/`--asset-commit`)
   are a last resort for SVGs without a carrier; they intentionally omit the link.
-- Edit links are permanent bearer capabilities: anyone holding the deck can use
-  them. Tell the user when a delivered deck contains edit links. Treat
-  downloaded and recovered SVGs as private files.
+- Edit links are permanent bearer capabilities, and native shapes carry each
+  chart's full model, which the edit link already grants: anyone holding the deck
+  can use both. Tell the user when a delivered deck contains them. Treat
+  `.pptx.json` downloads and downloaded or recovered SVGs as private files.
 
 ## Recovery
 
 `restore_assets.py --output-dir <dir>` writes the exact embedded SVGs back out for
-rebuilding a deck after the original downloads are gone. Grouped Grunt shapes
-must be ungrouped first. If asset-project tools are available, keep one project
-per deliverable and stamp its ID in the final file.
+rebuilding a deck after the original downloads are gone. It never exports native
+model data; download native placements again to rebuild native shapes. Grouped
+Grunt shapes must be ungrouped first. If asset-project tools are available, keep
+one project per deliverable and stamp its ID in the final file.
 
 For a paired HTML report, see [HTML.md](HTML.md) and the `grunt-html` skill.
 

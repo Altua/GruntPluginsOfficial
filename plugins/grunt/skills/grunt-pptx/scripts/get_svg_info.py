@@ -34,6 +34,9 @@ import re
 import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
+
+# `python -I` leaves the script's own folder off sys.path; the helpers import each other.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 from pptx_validation import svg_dimensions_points
 from urllib.parse import parse_qs, urlsplit
 

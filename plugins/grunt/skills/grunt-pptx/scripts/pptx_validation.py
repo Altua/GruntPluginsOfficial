@@ -1,9 +1,15 @@
 """PowerPoint export preflight. Reads SVG without changing the bytes embedded in PPTX."""
+import base64
+import binascii
 import math
 import re
 import xml.etree.ElementTree as ET
 
 SVG_NS = "http://www.w3.org/2000/svg"
+GUID = re.compile(r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}\Z")
+LOWERCASE_COMMIT = re.compile(r"[0-9a-f]{64}\Z")
+NATIVE_BOUNDS = ("x", "y", "width", "height")
+NATIVE_OPTIONAL_PAYLOADS = ("dataServiceBase64", "resourcesBase64", "shapeBoundsBase64")
 
 
 def validate_ppt_svg(svg_bytes):
@@ -74,3 +80,62 @@ def fit_placement(root, left, top, width, height, fit="contain"):
     if fit != "contain":
         raise ValueError("fit must be 'contain' or 'exact'.")
     return left + (width - actual_width) / 2, top + (height - actual_height) / 2, actual_width, actual_height
+
+
+def _is_base64(value):
+    if not isinstance(value, str) or not value:
+        return False
+    try:
+        base64.b64decode(value, validate=True)
+    except (binascii.Error, ValueError):
+        return False
+    return True
+
+
+def validate_native_placement(document):
+    """Check a native placement (the links.pptx response) and return its objects.
+
+    Errors never quote values: the payloads are the customer's full chart model.
+    Unknown fields are ignored so a newer server's response stays readable.
+    """
+    if (not isinstance(document, dict) or type(document.get("schemaVersion")) is not int
+            or document["schemaVersion"] != 1):
+        raise ValueError("Native placement must be schemaVersion 1.")
+    if not isinstance(document.get("assetId"), str) or not GUID.match(document["assetId"]):
+        raise ValueError("Native placement assetId must be a GUID.")
+    if not isinstance(document.get("projectCommitKey"), str) or not LOWERCASE_COMMIT.match(document["projectCommitKey"]):
+        raise ValueError("Native placement projectCommitKey must be 64 lowercase hex characters.")
+    objects = document.get("objects")
+    if not isinstance(objects, list) or not objects:
+        raise ValueError("Native placement must contain at least one object.")
+    keys = set()
+    for number, item in enumerate(objects, 1):
+        where = f"Native object {number}"
+        if not isinstance(item, dict):
+            raise ValueError(f"{where} is not a JSON object.")
+        key = item.get("pageObjectKey")
+        if not isinstance(key, str) or not GUID.match(key) or key.lower() in keys:
+            raise ValueError(f"{where}: pageObjectKey must be a unique GUID.")
+        keys.add(key.lower())
+        if not isinstance(item.get("objectType"), str) or not item["objectType"].strip():
+            raise ValueError(f"{where}: objectType must be a non-empty string.")
+        if not isinstance(item.get("svg"), str):
+            raise ValueError(f"{where}: svg must be a string.")
+        try:
+            validate_ppt_svg(item["svg"].encode("utf-8"))
+        except UnicodeEncodeError:
+            raise ValueError(f"{where}: svg is not valid UTF-8 text.") from None
+        except ValueError as error:
+            raise ValueError(f"{where}: {error}") from None
+        bounds = item.get("svgBounds")
+        if (not isinstance(bounds, dict) or not all(
+                isinstance(bounds.get(name), (int, float)) and not isinstance(bounds[name], bool)
+                and math.isfinite(bounds[name]) for name in NATIVE_BOUNDS)
+                or min(bounds["width"], bounds["height"]) <= 0):
+            raise ValueError(f"{where}: svgBounds needs finite x and y and a positive width and height, in points.")
+        if not _is_base64(item.get("pageObjectBase64")):
+            raise ValueError(f"{where}: pageObjectBase64 must be non-empty base64.")
+        for name in NATIVE_OPTIONAL_PAYLOADS:
+            if item.get(name) is not None and not _is_base64(item[name]):
+                raise ValueError(f"{where}: {name} must be non-empty base64 when present.")
+    return objects

@@ -21,6 +21,14 @@ offline editing. No WSL route, development user, or API key is embedded.
 Without the add-in, PowerPoint renders the SVG (with PNG fallback) as a static
 image. Inspect the final deck in the intended slide renderer before delivery.
 
+Native placements (manifest entries {"pptx": FILE, "slide": N}, FILE written by
+download_chart.py --format pptx) also carry the add-in's own object tags:
+GRUNT-PAGEOBJECT plus the serialized GRUNT-X-PAGEOBJECT/-DATASERVICE/-RESOURCES/
+-SHAPEBOUNDS payloads, chunked exactly like the add-in's ChunkedTagAdapter. The add-in then
+loads them like any saved Grunt deck, with no download on first open. Each object
+becomes its own shape at the file's svgBounds (points, final slide position).
+They get no GRUNT-WEB-REVISION-POLICY: a native shape is a snapshot of its commit.
+
 v2 fix (P0 finding, design doc §2.3): the PRIOR version of this script stripped
 the SVG's `<!-- assetId:...,commitId:... -->` comment before embedding it into the
 pptx, on the theory that ElementTree needed "clean" XML to parse dimensions from.
@@ -78,18 +86,14 @@ Usage:
         --left 1.0 --top 1.0 --width 8.0 --height 4.5 \\
         --trust-origin https://localhost:7299
 
-Dependencies:
-    pip install python-pptx lxml "cairosvg>=2.7.0" --break-system-packages
-
-(cairosvg>=2.7.0 specifically: that release disabled external-resource/XML-entity
-access by default as a security fix -- this script also passes `unsafe=False`
-explicitly to `cairosvg.svg2png` below, rather than relying only on the library's
-own default, so a future default change upstream can't silently re-enable it here.)
+Dependencies: the skill's requirements.txt (python-pptx, lxml, resvg-py).
 """
 
 import argparse
 import re
+import sys
 import xml.etree.ElementTree as ET
+from collections import Counter
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
@@ -98,13 +102,18 @@ from pptx import Presentation
 from pptx.opc.constants import RELATIONSHIP_TYPE as RT
 from pptx.opc.package import Part
 from pptx.opc.packuri import PackURI
+from pptx.oxml import parse_xml
 from pptx.util import Inches
 
 import json
 import uuid
 import os
 import tempfile
-from pptx_validation import validate_ppt_svg, fit_placement, svg_viewport, svg_dimensions_points
+
+# `python -I` leaves the script's own folder off sys.path; the helpers import each other.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from pptx_validation import (validate_ppt_svg, fit_placement, svg_viewport, svg_dimensions_points,
+                             validate_native_placement)
 
 
 # ---------------------------------------------------------------------------
@@ -415,37 +424,20 @@ def require_embedded_resources(svg_bytes: bytes) -> None:
 def svg_to_png(svg_bytes: bytes, width: int = 2500) -> bytes:
     """Rasterize original bytes for the PNG fallback, allowing only embedded resources.
 
-    resvg-py is preferred because it is a self-contained wheel on Windows, macOS and
-    Linux. CairoSVG is used when resvg-py is absent and the native Cairo library loads.
+    resvg-py is a self-contained wheel on Windows, macOS and Linux.
     """
     require_embedded_resources(svg_bytes)
     try:
         import resvg_py
     except ImportError:
-        return _cairosvg_png(svg_bytes, width)
+        raise ValueError("No SVG rasterizer for the PNG fallback. Install the skill's "
+                         "requirements.txt, which includes resvg-py.") from None
     try:
         svg_text = svg_bytes.decode("utf-8")
     except UnicodeDecodeError:
         raise ValueError("SVG must be UTF-8 encoded; re-download the Grunt SVG.") from None
     # dpi=96 resolves pt/in/cm sizes; resvg-py's default of 0 rejects them as invalid.
     return bytes(resvg_py.svg_to_bytes(svg_string=svg_text, width=width, dpi=96))
-
-
-def _cairosvg_png(svg_bytes: bytes, width: int) -> bytes:
-    try:
-        from cairosvg.surface import PNGSurface
-        from cairosvg.url import fetch
-    except (ImportError, OSError) as error:
-        raise ValueError("No SVG rasterizer for the PNG fallback. Install resvg-py "
-                         "(pip install resvg-py), or CairoSVG >= 2.7 with the native Cairo library.") from error
-
-    def embedded_resource(url, resource_type):
-        if urlsplit(url).scheme.lower() != "data":
-            raise ValueError(EXTERNAL_RESOURCE_ERROR)
-        return fetch(url, resource_type)
-
-    return PNGSurface.convert(bytestring=svg_bytes, output_width=width, unsafe=False,
-                              url_fetcher=embedded_resource)
 
 
 # ---------------------------------------------------------------------------
@@ -486,6 +478,37 @@ def _next_tag_number(package) -> int:
 # ---------------------------------------------------------------------------
 # Tag attachment
 # ---------------------------------------------------------------------------
+
+# The add-in's longest tag value (TagSynchronizerFactory.c_maxTagLength). Longer
+# values are split as ChunkedTagAdapter.SetValue (ITagAdapter.cs) and
+# grunt-io-pptxgen's chunkTagValue write them: "-<count>-<value>" cut into
+# MAX_TAG_CHUNK_LENGTH pieces stored as KEY, KEY-1, KEY-2, ...
+MAX_TAG_CHUNK_LENGTH = 5242800
+NATIVE_PAYLOAD_TAGS = (("GRUNT-X-PAGEOBJECT", "pageObjectBase64"),
+                       ("GRUNT-X-DATASERVICE", "dataServiceBase64"),
+                       ("GRUNT-X-RESOURCES", "resourcesBase64"),
+                       # The placed rectangle: lets the add-in detect a shape moved before its first native load.
+                       ("GRUNT-X-SHAPEBOUNDS", "shapeBoundsBase64"))
+
+
+def calculate_chunk_count(value: str, max_size: int = MAX_TAG_CHUNK_LENGTH) -> int:
+    """Port of calculateChunkCount: the count's own digits are part of the
+    chunked length, so find the digit count that agrees with its own result."""
+    for digits in range(1, 20):
+        count = -(-(len(value) + 2 + digits) // max_size)
+        if len(str(count)) == digits:
+            return count
+    raise ValueError("Failed to calculate tag chunk count.")
+
+
+def chunk_tag_value(key: str, value: str, max_size: int = MAX_TAG_CHUNK_LENGTH) -> dict:
+    """Port of chunkTagValue: {KEY: value} when it fits, else the chunked pieces."""
+    if len(value) <= max_size:
+        return {key: value}
+    rest = f"-{calculate_chunk_count(value, max_size)}-{value}"
+    return {key if index == 0 else f"{key}-{index}": rest[start:start + max_size]
+            for index, start in enumerate(range(0, len(rest), max_size))}
+
 
 def add_tags_to_element(slide_part, nv_pr_element, tags_dict: dict) -> None:
     """
@@ -744,6 +767,88 @@ def _validate_trust_origin(value: str) -> str:
     return f"{parsed.scheme}://{parsed.hostname}" + (f":{port}" if port is not None else "")
 
 
+def _beyond_slide(prs, left, top, width, height) -> bool:
+    """Off-slide check in inches, shared by SVG and native placements. The tolerance
+    absorbs float noise in exported bounds (e.g. y = -1e-05 pt at the slide edge)."""
+    return (min(left, top) < -0.0001 or left + width > prs.slide_width / 914400 + 0.0001
+            or top + height > prs.slide_height / 914400 + 0.0001)
+
+
+def _prepare_native(prs, index, slide_index, path, allowed_origins):
+    """One prepared shape per object of a download_chart.py --format pptx file, at its svgBounds."""
+    try:
+        document = json.loads(Path(path).read_text(encoding="utf-8"))
+        objects = validate_native_placement(document)
+    except ValueError as error:
+        raise ValueError(f"Placement {index}: {error} Re-download with download_chart.py --format pptx.") from None
+    asset_id, asset_commit = document["assetId"].lower(), document["projectCommitKey"]
+    # The same trusted-origin and identity checks as an SVG carrier; otherwise omit the link.
+    source = document.get("source")
+    carrier = parse_carrier_url(source, allowed_origins) if isinstance(source, str) else None
+    link = source if carrier and (carrier["asset_id"], carrier["asset_commit"]) == (asset_id, asset_commit) else None
+    shapes = []
+    for number, item in enumerate(objects, 1):
+        points = [item["svgBounds"][key] for key in ("x", "y", "width", "height")]
+        left, top, width, height = (value / 72 for value in points)
+        if _beyond_slide(prs, left, top, width, height):
+            raise ValueError(f"Placement {index}: object {number} extends beyond the slide. "
+                             "Re-download it with an x/y/width/height inside the slide.")
+        tags = {"GRUNT-PAGEOBJECT": item["pageObjectKey"]}
+        for tag, field in NATIVE_PAYLOAD_TAGS:
+            if item.get(field) is not None:
+                tags.update(chunk_tag_value(tag, item[field]))
+        tags.update({"GRUNT-WEB-ASSETID": asset_id, "GRUNT-WEB-ASSETCOMMIT": asset_commit})
+        if link:
+            tags["GRUNT-WEB-LINK"] = link
+        inches = dict(zip(("left", "top", "width", "height"), (round(v, 4) for v in (left, top, width, height))))
+        info = {"slide": slide_index, "asset_id": asset_id, "asset_commit": asset_commit, "native": True,
+                "page_object_key": item["pageObjectKey"].lower(), "object_type": item["objectType"],
+                "shape_name": f"Grunt object {asset_id}", "web_link_tag_written": bool(link),
+                "position": f'{inches["left"]}" x {inches["top"]}"', "size": f'{inches["width"]}" x {inches["height"]}"',
+                "placement_inches": inches}
+        if not link:
+            info["warning"] = "No GRUNT-WEB-LINK tag: the saved source is absent, untrusted or for another asset version."
+        # Points to EMU exactly (12700 per point), never through rounded inches.
+        shapes.append((item["svg"].encode("utf-8"), tags, info, tuple(round(v * 12700) for v in points)))
+    return shapes
+
+
+def _deck_native_objects(prs):
+    """(slide, page object key, asset id, placed with other objects) of the native shapes already in the
+    deck. Several native shapes of one asset on one slide are one placement, such as a chart and its legend.
+    A shape the add-in created, such as a legend added there, has no asset ID, and only its serialized
+    payload names its chart. So when its slide holds more than one native object key, every native object
+    there counts as placed with others."""
+    found = []
+    for slide_index, slide in enumerate(prs.slides):
+        for shape in slide._element.iter(f"{{{P_NS}}}sp", f"{{{P_NS}}}pic"):
+            tags = {}
+            for ref in shape.iter(f"{{{P_NS}}}tags"):
+                rel_id = ref.get(f"{{{R_NS}}}id")
+                if rel_id in slide.part.rels:
+                    tags.update((tag.get("name", "").upper(), tag.get("val", ""))
+                                for tag in parse_xml(slide.part.related_part(rel_id).blob).iter(f"{{{P_NS}}}tag"))
+            if tags.get("GRUNT-PAGEOBJECT"):
+                found.append((slide_index, tags["GRUNT-PAGEOBJECT"].lower(), tags.get("GRUNT-WEB-ASSETID", "").lower()))
+    # A copy the add-in re-keyed keeps its original's GRUNT-PAGEOBJECT, so count each key once per slide.
+    found = list(dict.fromkeys(found))
+    per_slide = Counter(slide for slide, _ in {(slide, key) for slide, key, _ in found})
+    per_asset = Counter((slide, asset_id) for slide, _, asset_id in found if asset_id)
+    unknown = {slide for slide, _, asset_id in found if not asset_id}
+    return [(slide, key, asset_id, per_asset[slide, asset_id] > 1 or (slide in unknown and per_slide[slide] > 1))
+            for slide, key, asset_id in found]
+
+
+def _already_placed(index, asset_id, slide, earlier_asset_id):
+    """The start of the error for a native object whose key is already on `slide`."""
+    if earlier_asset_id == asset_id:
+        return f"Placement {index}: asset {asset_id} is already placed on slide {slide + 1}."
+    if not earlier_asset_id:
+        return f"Placement {index}: asset {asset_id} shares object keys with a Grunt object on slide {slide + 1}."
+    return (f"Placement {index}: asset {asset_id} has the object keys of asset {earlier_asset_id}, already placed "
+            f"on slide {slide + 1} (a duplicated asset keeps its original's keys).")
+
+
 def insert_charts(pptx, output, placements, *, base_dir=Path('.'), trusted_origins=(),
                   revision_policy="pinned", fit="contain", preview_dir=None):
     """Preflight the whole manifest, then load/save once. SVGs remain byte-identical."""
@@ -755,13 +860,62 @@ def insert_charts(pptx, output, placements, *, base_dir=Path('.'), trusted_origi
     prepared = []
     allowed = {"svg", "slide", "left", "top", "width", "height", "asset_id", "asset_commit", "fit"}
     required = {"svg", "slide", "left", "top", "width", "height"}
+    allowed_origins = DEFAULT_ASSET_LINK_ORIGINS + tuple(trusted_origins)
+    placed = {}  # page object key -> (first slide, asset id) of native objects, the input deck's included
+    on_slides = {}  # (slide, page object key) -> asset id
+    assets = {}  # asset id -> first slide of its native objects
+    with_others = set()  # keys of objects placed together with others, such as a chart and its legend
+    assets_with_others = set()  # asset ids of those objects, so that a version with new keys still counts
+    once_per_deck = (" An asset with several objects (such as a chart and its separate legend) appears once per "
+                     "deck, counting its other versions and duplicates; create a new asset for each further copy.")
+    for slide_index, key, asset_id, together in _deck_native_objects(prs):
+        placed.setdefault(key, (slide_index, asset_id))
+        on_slides[slide_index, key] = asset_id
+        if together:
+            with_others.add(key)
+        if asset_id:
+            assets.setdefault(asset_id, slide_index)
+            if together:
+                assets_with_others.add(asset_id)
     for index, placement in enumerate(placements):
-        if not isinstance(placement, dict) or set(placement) - allowed or required - set(placement):
+        native = isinstance(placement, dict) and "pptx" in placement
+        if native and set(placement) != {"pptx", "slide"}:
+            raise ValueError(f"Placement {index}: a native placement takes only pptx and slide; its rectangle comes "
+                             "from the downloaded file. Re-download at another x/y/width/height to move or resize it.")
+        if not native and (not isinstance(placement, dict) or set(placement) - allowed or required - set(placement)):
             raise ValueError(f"Placement {index}: expected svg, slide, left, top, width, height; "
                              "optional asset_id, asset_commit, fit. Unknown fields are not accepted.")
         slide_index = placement["slide"]
         if isinstance(slide_index, bool) or not isinstance(slide_index, int) or not 0 <= slide_index < len(prs.slides):
             raise ValueError(f"Placement {index}: slide index must be between 0 and {len(prs.slides) - 1}.")
+        if native:
+            if not isinstance(placement["pptx"], str) or not placement["pptx"]:
+                raise ValueError(f"Placement {index}: pptx must be a local file path.")
+            shapes = _prepare_native(prs, index, slide_index, Path(base_dir) / placement["pptx"], allowed_origins)
+            # On load the add-in re-keys a repeated object. A repeated legend stays with the first chart on the
+            # same slide; on another slide it moves to the legend-less chart nearest the original, which can be
+            # another asset's. A new legend beside a re-keyed chart loses it. So a slide holds each object once,
+            # and an asset placed with several objects appears once per deck, the input deck's objects included.
+            together, asset_id = len(shapes) > 1, shapes[0][2]["asset_id"]
+            if asset_id in assets and (together or asset_id in assets_with_others):
+                raise ValueError(_already_placed(index, asset_id, assets[asset_id], asset_id) + once_per_deck)
+            for *_, info, _ in shapes:
+                key = info["page_object_key"]
+                if (slide_index, key) in on_slides:
+                    raise ValueError(_already_placed(index, asset_id, slide_index, on_slides[slide_index, key])
+                                     + " Place an asset once per slide; create a new asset for a second copy "
+                                     "on the same slide.")
+                if key in placed and (together or key in with_others):
+                    raise ValueError(_already_placed(index, asset_id, *placed[key]) + once_per_deck)
+                placed.setdefault(key, (slide_index, asset_id))
+                on_slides[slide_index, key] = asset_id
+                if together:
+                    with_others.add(key)
+            assets.setdefault(asset_id, slide_index)
+            if together:
+                assets_with_others.add(asset_id)
+            prepared.extend(shapes)
+            continue
         if not isinstance(placement["svg"], str) or not placement["svg"]:
             raise ValueError(f"Placement {index}: svg must be a local file path.")
         svg_path = Path(base_dir) / placement["svg"]
@@ -780,7 +934,7 @@ def insert_charts(pptx, output, placements, *, base_dir=Path('.'), trusted_origi
         link = None if has_override else metadata["link"]
         left, top, width, height = fit_placement(root, *(placement[key] for key in ("left", "top", "width", "height")),
                                                 fit=placement.get("fit", fit))
-        if left + width > prs.slide_width / 914400 + 0.0001 or top + height > prs.slide_height / 914400 + 0.0001:
+        if _beyond_slide(prs, left, top, width, height):
             raise ValueError(f"Placement {index}: SVG extends beyond the slide. Adjust its position or size.")
         tags = {"GRUNT-WEB-ASSETID": asset_id, "GRUNT-WEB-ASSETCOMMIT": asset_commit,
                 "GRUNT-WEB-REVISION-POLICY": revision_policy}
@@ -793,18 +947,17 @@ def insert_charts(pptx, output, placements, *, base_dir=Path('.'), trusted_origi
                 "svg_viewport_px": list(svg_viewport(root)), "aspect_ratio_preserved": True}
         if not link:
             info["warning"] = "No GRUNT-WEB-LINK tag: carrier is absent, untrusted or manually overridden."
-        prepared.append((svg_bytes, tags, info))
+        prepared.append((svg_bytes, tags, info, tuple(Inches(v) for v in (left, top, width, height))))
 
     # Preflight every item before rasterizing or writing any output. Cache reused SVGs.
     rasters = {}
     previews = []
-    for svg_bytes, tags, info in prepared:
+    for svg_bytes, tags, info, rectangle in prepared:
         if svg_bytes not in rasters:
             rasters[svg_bytes] = svg_to_png(svg_bytes)
         position = info["placement_inches"]
         slide = prs.slides[info["slide"]]
-        add_grunt_web_chart_shape(slide, slide.part, svg_bytes, rasters[svg_bytes],
-                                 *(Inches(position[key]) for key in ("left", "top", "width", "height")),
+        add_grunt_web_chart_shape(slide, slide.part, svg_bytes, rasters[svg_bytes], *rectangle,
                                  info["shape_name"], tags)
         if preview_dir:
             previews.append(svg_to_png(svg_bytes, max(1, round(position["width"] * 144))))
@@ -813,6 +966,8 @@ def insert_charts(pptx, output, placements, *, base_dir=Path('.'), trusted_origi
               "placements": [item[2] for item in prepared]}
     if len(prepared) == 1:
         result.update(prepared[0][2])
+    if revision_policy == "latest" and any(item[2].get("native") for item in prepared):
+        result["note"] = "--revision-policy applies only to SVG placements; native shapes are snapshots of their commit."
     if preview_dir:
         result["preview_note"] = "144 dpi asset previews. Render the assembled PPTX separately in the target application."
 
@@ -840,7 +995,8 @@ def main():
     )
     source = parser.add_mutually_exclusive_group(required=True)
     source.add_argument("--svg", help="Path to one plain Grunt SVG")
-    source.add_argument("--manifest", help="JSON array of SVG placements; loads and saves the PPTX once")
+    source.add_argument("--manifest", help="JSON array of SVG and native ({\"pptx\": FILE, \"slide\": N}) placements; "
+                                           "loads and saves the PPTX once")
     parser.add_argument("--fit", choices=("contain", "exact"), default="contain")
     parser.add_argument("--preview-dir", help="Optional final-size PNG previews at 144 dpi and token-free diagnostics")
     parser.add_argument("--pptx", required=True, help="Path to input PPTX")

@@ -4,16 +4,21 @@
 No network requests. The saved deck, including its embedded capability-bearing SVGs,
 is the recovery source after temporary chart downloads have been deleted. Treat the
 restored SVG directory as temporary and private, just like the original downloads.
+Native shapes are inventoried with their object key; their serialized model payloads
+are never exported or printed.
 """
 import argparse
 import hashlib
 import json
 import posixpath
 import re
+import sys
 from pathlib import Path
 from zipfile import ZipFile
 from xml.etree import ElementTree as ET
 
+# `python -I` leaves the script's own folder off sys.path; the helpers import each other.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 from download_chart import _write_private_file
 
 P = "http://schemas.openxmlformats.org/presentationml/2006/main"
@@ -73,6 +78,11 @@ def read_assets(pptx):
                 commit = tags.get("GRUNT-WEB-ASSETCOMMIT", "")
                 if not GUID.fullmatch(asset_id) or not COMMIT.fullmatch(commit):
                     raise ValueError(f"Invalid Grunt identity on slide {slide_index + 1}")
+                # Native shapes carry the add-in's own object tags (and no revision policy).
+                native = bool(tags.get("GRUNT-PAGEOBJECT") or tags.get("GRUNT-X-PAGEOBJECT"))
+                object_key = tags.get("GRUNT-PAGEOBJECT", "")
+                if native and not GUID.fullmatch(object_key):
+                    raise ValueError(f"Invalid Grunt object key on slide {slide_index + 1}")
                 svg_ref = shape.find(f".//{{{SVG}}}svgBlip")
                 if svg_ref is None:
                     raise ValueError(f"Missing embedded SVG on slide {slide_index + 1}")
@@ -87,15 +97,18 @@ def read_assets(pptx):
                 if identity is None or xfrm is None:
                     raise ValueError("Grunt picture has no identity or placement")
                 off, ext = xfrm.find(f"{{{A}}}off"), xfrm.find(f"{{{A}}}ext")
-                charts.append({
+                chart = {
                     "slide": slide_index, "shapeId": identity.get("id"),
                     "assetId": asset_id.lower(), "commit": commit.lower(),
-                    "filename": filename, "sha256": digest,
-                    "revisionPolicy": tags.get("GRUNT-WEB-REVISION-POLICY", "latest"),
+                    "filename": filename, "sha256": digest, "native": native,
+                    "revisionPolicy": None if native else tags.get("GRUNT-WEB-REVISION-POLICY", "latest"),
                     "hasEditLink": bool(tags.get("GRUNT-WEB-LINK")),
                     "boundsEmu": {"left": int(off.get("x")), "top": int(off.get("y")),
                                   "width": int(ext.get("cx")), "height": int(ext.get("cy"))},
-                })
+                }
+                if native:
+                    chart["pageObjectKey"] = object_key.lower()
+                charts.append(chart)
     return {
         "schemaVersion": 1, "sourceSha256": hashlib.sha256(Path(pptx).read_bytes()).hexdigest(),
         "project": {"id": project_tags.get("GRUNT-ASSET-PROJECT-ID"), "name": project_tags.get("GRUNT-ASSET-PROJECT-NAME")},
@@ -122,7 +135,8 @@ def main():
     parser.add_argument("--manifest", required=True, help="Final assets, revisions, hashes and placements; contains no capability URLs")
     args = parser.parse_args()
     result = restore_assets(args.pptx, args.output_dir, args.manifest)
-    print(json.dumps({"charts": len(result["charts"]), "assets": len(result["finalAssetIds"]), "projectStamped": bool(result["project"]["id"])}))
+    print(json.dumps({"charts": len(result["charts"]), "native": sum(c["native"] for c in result["charts"]),
+                      "assets": len(result["finalAssetIds"]), "projectStamped": bool(result["project"]["id"])}))
 
 
 if __name__ == "__main__":
