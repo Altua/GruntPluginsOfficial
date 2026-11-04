@@ -275,25 +275,27 @@ class NativePlacementDownloadTests(unittest.TestCase):
         self.assertEqual(summary["font_families"], ["Segoe UI"])
         self.assertEqual(calls, [PLACED_SOURCE, PPTX_DELIVERY])
 
-    def test_advertised_placement_that_404s_points_to_the_svg_fallback(self):
-        # The server answers an oversized placement with the uniform 404.
-        class Opener:
-            def __init__(self):
-                self.calls = 0
+    def test_failed_placement_points_to_the_svg_fallback(self):
+        # 404: an oversized placement. 401: an asset host without the placement route.
+        for status in (404, 401):
+            with self.subTest(status=status):
+                class Opener:
+                    def __init__(self):
+                        self.calls = 0
 
-            def open(self, request, timeout):
-                self.calls += 1
-                if self.calls == 1:
-                    return Response(json.dumps(edit_manifest()).encode(), "application/json")
-                raise dc.HTTPError(request.full_url, 404, "Not Found", {}, None)
+                    def open(self, request, timeout):
+                        self.calls += 1
+                        if self.calls == 1:
+                            return Response(json.dumps(edit_manifest()).encode(), "application/json")
+                        raise dc.HTTPError(request.full_url, status, "Error", {}, None)
 
-        stream = io.StringIO()
-        with tempfile.TemporaryDirectory() as tmp, patch.object(dc, "build_opener", return_value=Opener()), \
-                redirect_stderr(stream), redirect_stdout(stream), self.assertRaises(SystemExit):
-            dc.download_pptx(PLACED_SOURCE, str(Path(tmp) / "revenue.pptx.json"), dc.DEFAULT_ASSET_LINK_ORIGINS)
-        self.assertIn("status 404", stream.getvalue())
-        self.assertIn("use the SVG fallback", stream.getvalue())
-        self.assertNotIn(TOKEN, stream.getvalue())
+                stream = io.StringIO()
+                with tempfile.TemporaryDirectory() as tmp, patch.object(dc, "build_opener", return_value=Opener()), \
+                        redirect_stderr(stream), redirect_stdout(stream), self.assertRaises(SystemExit):
+                    dc.download_pptx(PLACED_SOURCE, str(Path(tmp) / "revenue.pptx.json"), dc.DEFAULT_ASSET_LINK_ORIGINS)
+                self.assertIn(f"status {status}", stream.getvalue())
+                self.assertIn("use the SVG fallback", stream.getvalue())
+                self.assertNotIn(TOKEN, stream.getvalue())
 
     def test_missing_pptx_link_points_to_the_svg_flow(self):
         body = edit_manifest()

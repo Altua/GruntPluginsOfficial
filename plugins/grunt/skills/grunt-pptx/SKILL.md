@@ -64,15 +64,33 @@ deliverable, so every asset is created and updated under the same account.
 
 ## One-time setup
 
-Python 3.10+ is required. Install the helper dependencies once:
+The helpers need Python 3.10+ and the packages in `requirements.txt`, pinned to
+the versions they are tested with. Check whether your Python has them:
 
 ```sh
-python -m pip install -r "<skill-dir>/requirements.txt"
+python -c "import pptx, lxml, resvg_py, pypdfium2"
 ```
 
-`resvg-py` renders the PNG fallback without system libraries. CairoSVG (with the
-native Cairo library) is used only if resvg-py is absent. LibreOffice is needed
-for `render_deck.py`.
+If it does not, create a virtual environment in the user's working folder, not
+in the skill folder, and install them there (about 40 MB):
+
+```sh
+python -m venv .grunt-venv
+.grunt-venv/bin/python -m pip install -r "<skill-dir>/requirements.txt"
+```
+
+On Windows the interpreter is `.grunt-venv\Scripts\python.exe`. Use it wherever
+the commands below say `python`. The helpers also run under `python -I`.
+
+`resvg-py` renders each picture's PNG fallback, and `pypdfium2` turns the
+rendered deck into PNG pages. `render_deck.py` also needs LibreOffice, a large
+separate install: ask the user before installing it
+(`winget install TheDocumentFoundation.LibreOffice`,
+`brew install --cask libreoffice` or `sudo apt-get install libreoffice-impress`).
+Do not add LibreOffice's program folder to `PATH`, because it has its own
+`python`; pass `--soffice` when the helper does not find it. Without
+LibreOffice, skip `render_deck.py` and tell the user the slides were not
+rendered.
 
 ## Workflow
 
@@ -107,9 +125,10 @@ for `render_deck.py`.
    per deck, counting its other versions and duplicates: the add-in can bind a
    repeated legend to another chart. For another copy, create a new asset (a
    duplicate keeps the original's object keys). If the helper reports no
-   `links.pptx` (an older server), or the native download fails with a 404 (an
-   asset too large for a native placement), use the [SVG fallback](#svg-fallback)
-   for that asset.
+   `links.pptx` (an older server), or the native download fails with any HTTP
+   error (a 404 for an asset too large for a native placement, another status
+   from an asset host that cannot place assets yet), use the
+   [SVG fallback](#svg-fallback) for that asset and tell the user.
 5. **Prepare the deck skeleton** (the user's template, or python-pptx). Leave the
    chart rectangles empty.
 6. **Insert all assets in one operation.** Write a placements manifest; paths are

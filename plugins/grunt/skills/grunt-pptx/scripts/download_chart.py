@@ -25,6 +25,9 @@ import tempfile
 import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
+
+# `python -I` leaves the script's own folder off sys.path; the helpers import each other.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 from pptx_validation import svg_dimensions_points, validate_native_placement, NATIVE_BOUNDS, NATIVE_OPTIONAL_PAYLOADS
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, parse_qs, urlsplit, urlunsplit
@@ -226,7 +229,7 @@ def _write_private_file(path: str, content: bytes) -> None:
         Path(temporary).unlink(missing_ok=True)
 
 
-def _fetch_bytes(url: str, media_type: str, limit: int | None = None, not_found_hint: str = "") -> bytes:
+def _fetch_bytes(url: str, media_type: str, limit: int | None = None, error_hint: str = "") -> bytes:
     content: bytes
     limit = MAX_RESPONSE_BYTES if limit is None else limit
     try:
@@ -250,7 +253,7 @@ def _fetch_bytes(url: str, media_type: str, limit: int | None = None, not_found_
             if len(content) > limit:
                 fail(f"Response exceeded the {limit}-byte cap")
     except HTTPError as e:
-        fail(f"HTTP error (status {e.code})" + (f". {not_found_hint}" if e.code == 404 and not_found_hint else ""))
+        fail(f"HTTP error (status {e.code})" + (f". {error_hint}" if error_hint else ""))
     except URLError as e:
         category = "Timed out" if isinstance(e.reason, TimeoutError) else "Connection failed"
         fail(f"{category}")
@@ -374,11 +377,12 @@ def download_pptx(url: str, output_path: str, allowed_origins, delivery_origins=
     """
     _, pinned_source, identity, origin, pptx_link = _resolve_manifest(url, allowed_origins, "pptx")
     delivery = _checked_delivery_url(pptx_link.get("href"), (origin,) + tuple(delivery_origins))
-    # The manifest just accepted this link, so a 404 here almost always means the placement
-    # would exceed the server's response bound.
+    # The manifest just accepted this link, so an HTTP error here is about the placement: a 404
+    # when it would exceed the server's response bound, another status from an asset host that
+    # cannot place assets yet. The SVG link of the same manifest still works in both cases.
     body = _fetch_bytes(delivery, "application/json", MAX_PPTX_RESPONSE_BYTES,
-                        not_found_hint="The asset is probably too large for a native placement; "
-                                       "use the SVG fallback (omit --format pptx) for this asset.")
+                        error_hint="The native placement failed; use the SVG fallback "
+                                   "(omit --format pptx) for this asset.")
     try:
         document = json.loads(body)
     except (ValueError, UnicodeError):

@@ -1,5 +1,6 @@
 """Regression cases for export identity, physical sizing and failure atomicity."""
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -13,6 +14,20 @@ import get_svg_info
 import insert_chart
 from restore_assets import read_assets
 from test_pptx_quality import SVG
+
+
+class IsolatedModeTests(unittest.TestCase):
+    def test_helpers_find_each_other_under_python_isolated_mode(self):
+        # `python -I` leaves the script's folder off sys.path, so sibling imports must not rely on it.
+        scripts = Path(__file__).resolve().parent
+        for script in ("download_chart.py", "get_svg_info.py", "insert_chart.py", "restore_assets.py", "render_deck.py"):
+            with self.subTest(script=script):
+                completed = subprocess.run([sys.executable, "-I", str(scripts / script), "--help"],
+                                           capture_output=True, text=True, timeout=60)
+                self.assertNotIn("No module named 'pptx_validation'", completed.stderr)
+                self.assertNotIn("No module named 'download_chart'", completed.stderr)
+                if script != "insert_chart.py":  # insert_chart.py also needs python-pptx, which -I may hide
+                    self.assertEqual(completed.returncode, 0, completed.stderr)
 
 
 class ExportRegressionTests(unittest.TestCase):
@@ -45,8 +60,7 @@ class ExportRegressionTests(unittest.TestCase):
                 svg = f'<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10">{element}</svg>'.encode()
                 renderer = MagicMock(side_effect=AssertionError('renderer reached'))
                 with self.subTest(element=element), \
-                        patch.dict(sys.modules, {'resvg_py': MagicMock(svg_to_bytes=renderer)}), \
-                        patch.object(insert_chart, '_cairosvg_png', renderer):
+                        patch.dict(sys.modules, {'resvg_py': MagicMock(svg_to_bytes=renderer)}):
                     with self.assertRaisesRegex(ValueError, 'embedded data URLs'):
                         insert_chart.svg_to_png(svg)
                     renderer.assert_not_called()

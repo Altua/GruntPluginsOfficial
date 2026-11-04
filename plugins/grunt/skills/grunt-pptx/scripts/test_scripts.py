@@ -65,7 +65,7 @@ def load_module(name: str):
 def load_insert_chart():
     """Import insert_chart.py. Rasterization is unrelated to what this test file
     exercises (tag construction, byte-preserving SVG embedding, origin trust),
-    so when neither resvg-py nor a loadable CairoSVG is present, the module's
+    so when resvg-py is not installed, the module's
     svg_to_png is replaced with a stub and every other check still runs for real.
     Returns None (with a SKIPPED message) if python-pptx/lxml aren't importable --
     those ARE required."""

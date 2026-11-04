@@ -86,17 +86,12 @@ Usage:
         --left 1.0 --top 1.0 --width 8.0 --height 4.5 \\
         --trust-origin https://localhost:7299
 
-Dependencies:
-    pip install python-pptx lxml "cairosvg>=2.7.0" --break-system-packages
-
-(cairosvg>=2.7.0 specifically: that release disabled external-resource/XML-entity
-access by default as a security fix -- this script also passes `unsafe=False`
-explicitly to `cairosvg.svg2png` below, rather than relying only on the library's
-own default, so a future default change upstream can't silently re-enable it here.)
+Dependencies: the skill's requirements.txt (python-pptx, lxml, resvg-py).
 """
 
 import argparse
 import re
+import sys
 import xml.etree.ElementTree as ET
 from collections import Counter
 from pathlib import Path
@@ -114,6 +109,9 @@ import json
 import uuid
 import os
 import tempfile
+
+# `python -I` leaves the script's own folder off sys.path; the helpers import each other.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 from pptx_validation import (validate_ppt_svg, fit_placement, svg_viewport, svg_dimensions_points,
                              validate_native_placement)
 
@@ -426,37 +424,20 @@ def require_embedded_resources(svg_bytes: bytes) -> None:
 def svg_to_png(svg_bytes: bytes, width: int = 2500) -> bytes:
     """Rasterize original bytes for the PNG fallback, allowing only embedded resources.
 
-    resvg-py is preferred because it is a self-contained wheel on Windows, macOS and
-    Linux. CairoSVG is used when resvg-py is absent and the native Cairo library loads.
+    resvg-py is a self-contained wheel on Windows, macOS and Linux.
     """
     require_embedded_resources(svg_bytes)
     try:
         import resvg_py
     except ImportError:
-        return _cairosvg_png(svg_bytes, width)
+        raise ValueError("No SVG rasterizer for the PNG fallback. Install the skill's "
+                         "requirements.txt, which includes resvg-py.") from None
     try:
         svg_text = svg_bytes.decode("utf-8")
     except UnicodeDecodeError:
         raise ValueError("SVG must be UTF-8 encoded; re-download the Grunt SVG.") from None
     # dpi=96 resolves pt/in/cm sizes; resvg-py's default of 0 rejects them as invalid.
     return bytes(resvg_py.svg_to_bytes(svg_string=svg_text, width=width, dpi=96))
-
-
-def _cairosvg_png(svg_bytes: bytes, width: int) -> bytes:
-    try:
-        from cairosvg.surface import PNGSurface
-        from cairosvg.url import fetch
-    except (ImportError, OSError) as error:
-        raise ValueError("No SVG rasterizer for the PNG fallback. Install resvg-py "
-                         "(pip install resvg-py), or CairoSVG >= 2.7 with the native Cairo library.") from error
-
-    def embedded_resource(url, resource_type):
-        if urlsplit(url).scheme.lower() != "data":
-            raise ValueError(EXTERNAL_RESOURCE_ERROR)
-        return fetch(url, resource_type)
-
-    return PNGSurface.convert(bytestring=svg_bytes, output_width=width, unsafe=False,
-                              url_fetcher=embedded_resource)
 
 
 # ---------------------------------------------------------------------------

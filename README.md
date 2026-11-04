@@ -77,9 +77,10 @@ Requirements on your machine:
 
 - **grunt-powerpoint:** PowerPoint with Grunt running and signed in. Nothing
   else to install.
-- **grunt-pptx:** Python 3.10+. The skill installs its Python packages from
-  `requirements.txt` on first use (python-pptx, lxml, resvg-py, PyMuPDF).
-  LibreOffice is used to render decks for checking.
+- **grunt-pptx:** Python 3.10+. On first use the skill installs its pinned
+  Python packages from `requirements.txt` (python-pptx, lxml, resvg-py,
+  pypdfium2; about 40 MB) into a virtual environment. LibreOffice is used to
+  render decks for checking.
 - **grunt-html:** Node.js 22.22+. No `npm install` needed.
 
 ## Share with a team (Claude Code)

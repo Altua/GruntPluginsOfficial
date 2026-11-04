@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Render a saved PPTX to PDF (and PNG pages when PyMuPDF is installed) with LibreOffice.
+"""Render a saved PPTX to PDF (and PNG pages when pypdfium2 is installed) with LibreOffice.
 
 This checks the assembled deck, not individual assets. LibreOffice results establish
 LibreOffice compatibility only; inspect the deck in PowerPoint separately when the
@@ -51,15 +51,18 @@ def render(pptx, output_dir, soffice=None, dpi=110):
         os.replace(converted_pdf, pdf)
     result = {"renderer": "LibreOffice", "pdf": str(pdf), "pages": []}
     try:
-        import pymupdf
+        import pypdfium2
     except ImportError:
-        result["note"] = "Install PyMuPDF for PNG pages, or read the PDF directly."
+        result["note"] = "Install the skill's requirements.txt (pypdfium2) for PNG pages, or read the PDF directly."
         return result
-    with pymupdf.open(pdf) as document:
+    document = pypdfium2.PdfDocument(str(pdf))
+    try:
         for index, page in enumerate(document, start=1):
             png = output_dir / f"{pptx.stem}-slide{index:02d}.png"
-            page.get_pixmap(dpi=dpi).save(png)
+            page.render(scale=dpi / 72).to_pil().save(png)
             result["pages"].append(str(png))
+    finally:
+        document.close()
     return result
 
 

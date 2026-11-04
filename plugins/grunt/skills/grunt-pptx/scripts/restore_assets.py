@@ -12,10 +12,13 @@ import hashlib
 import json
 import posixpath
 import re
+import sys
 from pathlib import Path
 from zipfile import ZipFile
 from xml.etree import ElementTree as ET
 
+# `python -I` leaves the script's own folder off sys.path; the helpers import each other.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 from download_chart import _write_private_file
 
 P = "http://schemas.openxmlformats.org/presentationml/2006/main"
