@@ -240,7 +240,9 @@ slow to open. Tell the user.
 
 When the user wants a chart or table from an Excel workbook on their computer
 kept connected, linked or updating, give the asset a connection to that file.
-Grunt in PowerPoint on that computer then refreshes it from the workbook.
+When the workbook is saved, Grunt in PowerPoint on that computer then shows that
+the object has new data, and the user applies it with Update (or Update all in
+the Data Connection Manager). Grunt does not redraw it on its own.
 
 1. **Use the workbook's full path on the user's computer**, such as
    `C:\Users\name\Documents\Sales.xlsx`. A path in a sandbox or cloud workspace,
@@ -264,10 +266,11 @@ Grunt in PowerPoint on that computer then refreshes it from the workbook.
 6. **Tell the user** that the deck shows the values read now. The connection
    takes effect only when the deck is opened in PowerPoint, on the computer
    where the workbook is, with a Grunt add-in that supports web assets: it
-   imports the picture as a Grunt object, and from then on refreshes it from the
-   workbook. Until then the object is a static picture. Unless you opened the
-   deck in PowerPoint with Grunt yourself, say that you have not seen it
-   refresh. Moving or renaming the workbook breaks the connection; Grunt's Data
+   imports the picture as a Grunt object, and from then on shows when a saved
+   workbook has new data, which the user applies with Update. Until then the
+   object is a static picture. Unless you opened the deck in PowerPoint with
+   Grunt yourself, say that you have not seen it update. Moving or renaming the
+   workbook breaks the connection; Grunt's Data
    Connection Manager in PowerPoint can point it at the new place.
 
 **Only a copy.** When you have the workbook only as a copy, such as a file the
