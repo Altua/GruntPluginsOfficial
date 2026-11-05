@@ -14,7 +14,7 @@ from pptx.util import Inches
 import insert_chart
 from pptx_validation import validate_ppt_svg, fit_placement, svg_viewport
 from restore_assets import related_parts, tags_for
-from test_manifest_download import (ASSET, COMMIT, LATEST, SOURCE, OBJECT_KEY, OBJECT_SVG, PAGE_OBJECT,
+from test_manifest_download import (ASSET, COMMIT, LATEST, ORIGIN, SOURCE, TOKEN, OBJECT_KEY, OBJECT_SVG, PAGE_OBJECT,
                                     DATA_SERVICE, RESOURCES, SHAPE_BOUNDS, native_object, placement)
 
 SVG = b'''<svg xmlns="http://www.w3.org/2000/svg" width="720pt" height="360pt">
@@ -382,17 +382,33 @@ class NativePlacementTests(unittest.TestCase):
         self.insert([{'pptx': self.native_file(native_object(svgBounds=bounds)), 'slide': 0}])
         self.assertEqual([(0, 0, 440 * 12700, 2730500)], [rectangle for rectangle, _, _ in self.shapes()])
 
-    def test_untrusted_or_mismatched_source_omits_the_link_with_a_warning(self):
-        local = SOURCE.replace('https://assets.grunt.io', 'https://localhost:7299')
-        for source in (local, SOURCE.replace(COMMIT, LATEST), SOURCE + '#fragment', 'not a url', None):
+    def test_an_untrusted_origin_stops_the_batch_and_names_the_flag(self):
+        # Seen in an E2E run against staging: a warning in the JSON went unnoticed, and the deck lost its links.
+        origin = 'https://localhost:7299'
+        local = SOURCE.replace(ORIGIN, origin)
+        name = self.native_file(name='local.pptx.json', source=local)
+        with self.assertRaises(ValueError) as raised:
+            self.insert([{'pptx': self.native_file(), 'slide': 0}, {'pptx': name, 'slide': 1}])
+        message = str(raised.exception)
+        self.assertIn(f'Placement 1: its asset link is on {origin}, which is not a trusted origin', message)
+        self.assertIn(f'pass --trust-origin {origin} to insert_chart.py', message)
+        self.assertNotIn(TOKEN, message)
+        self.assertFalse(self.output.exists())
+        result = self.insert([{'pptx': name, 'slide': 0}], trusted_origins=(origin,))
+        self.assertEqual(local, self.shapes()[0][1]['GRUNT-WEB-LINK'])
+        self.assertNotIn('warning', result)
+
+    def test_a_source_that_is_no_link_to_this_version_omits_the_link_with_a_warning(self):
+        # No --trust-origin would bring these links back, so the placement goes in without one.
+        local = SOURCE.replace(ORIGIN, 'https://localhost:7299')
+        for source in (SOURCE.replace(COMMIT, LATEST), local.replace(COMMIT, LATEST), SOURCE + '#fragment',
+                       'not a url', None):
             with self.subTest(source=source and source[:40]):
                 result = self.insert([{'pptx': self.native_file(source=source), 'slide': 0}])
                 [(_, tags, _)] = self.shapes()
                 self.assertNotIn('GRUNT-WEB-LINK', tags)
                 self.assertEqual(ASSET, tags['GRUNT-WEB-ASSETID'])
                 self.assertIn('No GRUNT-WEB-LINK', result['warning'])
-        self.insert([{'pptx': self.native_file(source=local), 'slide': 0}], trusted_origins=('https://localhost:7299',))
-        self.assertEqual(local, self.shapes()[0][1]['GRUNT-WEB-LINK'])
 
 
 if __name__ == '__main__':

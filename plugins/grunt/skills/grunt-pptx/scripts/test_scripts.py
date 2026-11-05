@@ -178,10 +178,11 @@ EPILOG_COMMENT_SVG = f"""<?xml version="1.0" encoding="UTF-8"?>
 # live-demo-discovered bug this version fixes: any non-production capability
 # server's carrier used to be silently invisible with no override at all).
 # Also carries the legacy identity comment, matching a real server-rendered
-# SVG (both are always present together) -- this is what lets identity still
-# resolve 2-of-3 (asset_id/asset_commit, no link) via that fallback when the
-# carrier's origin isn't trusted, exactly as the bug report describes, rather
-# than insert_chart.py finding no identity at all and refusing to proceed.
+# SVG (both are always present together) -- this is what lets parse_svg_metadata
+# still resolve identity 2-of-3 (asset_id/asset_commit, no link) via that
+# fallback when the carrier's origin isn't trusted. insert_chart.py does not
+# insert such a placement without its link: it refuses it and names the
+# --trust-origin value that would keep the link.
 TRUSTED_ORIGIN = "https://localhost:7299"
 TRUSTED_ORIGIN_LINK = (
     f"{TRUSTED_ORIGIN}/{FIXTURE_ASSET_ID}"
@@ -1042,8 +1043,11 @@ def test_insert_chart_trust_origin():
     NEVER write GRUNT-WEB-LINK (no override existed) -- the freshly inserted
     shape then failed the SKILL.md validation snippet with
     missing_or_empty={'GRUNT-WEB-LINK'} on every single insertion. This
-    confirms --trust-origin fixes that end-to-end: absent without the flag,
-    present (and byte-identical to the carrier) with it."""
+    confirms --trust-origin fixes that end-to-end: present (and byte-identical
+    to the carrier) with the flag. Without it the placement is refused with an
+    error naming the exact flag, and nothing is written: a 2026-11-05 E2E run
+    against staging showed that a warning in the JSON output alone goes
+    unnoticed, and the deck shipped without its links."""
     ic = load_insert_chart()
     if ic is None:
         return
@@ -1069,7 +1073,7 @@ def test_insert_chart_trust_origin():
         prs.slides.add_slide(prs.slide_layouts[6])  # blank layout
         prs.save(pptx_in)
 
-        # -- WITHOUT --trust-origin: GRUNT-WEB-LINK must be absent (2 of 3) ------
+        # -- WITHOUT --trust-origin: refused, nothing written, flag named --------
         pptx_out_untrusted = tmp_path / "out_untrusted.pptx"
         old_argv = sys.argv
         try:
@@ -1081,15 +1085,35 @@ def test_insert_chart_trust_origin():
             _, out, err, code = run_capturing(ic.main)
         finally:
             sys.argv = old_argv
-        check(code is None, "insert_chart.py: runs cleanly on an untrusted-origin SVG with no --trust-origin")
+        check(code == 1,
+              "insert_chart.py: an untrusted-origin SVG without --trust-origin is refused (exit 1), not "
+              "inserted without its GRUNT-WEB-LINK")
+        check(f"--trust-origin {TRUSTED_ORIGIN} to insert_chart.py" in err and err.startswith("ERROR: Placement 0:"),
+              "insert_chart.py: the refusal names the exact --trust-origin value that keeps the link")
+        check(not pptx_out_untrusted.exists(), "insert_chart.py: a refused placement writes no output deck")
+        check(FIXTURE_TOKEN not in out and FIXTURE_TOKEN not in err,
+              "insert_chart.py: the refusal never echoes the link's token")
 
-        tags_untrusted = _tags_in(pptx_out_untrusted)
-        check("GRUNT-WEB-LINK" not in tags_untrusted,
-              "insert_chart.py: GRUNT-WEB-LINK is NOT written for an untrusted origin without --trust-origin "
-              "(this is the live-demo-discovered bug -- validation would fail on this exact shape)")
-        check(tags_untrusted.get("GRUNT-WEB-ASSETID") == FIXTURE_ASSET_ID.lower()
-              and tags_untrusted.get("GRUNT-WEB-ASSETCOMMIT") == FIXTURE_COMMIT.lower(),
-              "insert_chart.py: GRUNT-WEB-ASSETID/ASSETCOMMIT are still written (identity resolves 2-of-3)")
+        # -- identity overrides omit the link on purpose, so they still insert ----
+        pptx_out_override = tmp_path / "out_override.pptx"
+        old_argv = sys.argv
+        try:
+            sys.argv = [
+                "insert_chart.py",
+                "--svg", str(svg_path), "--pptx", str(pptx_in), "--output", str(pptx_out_override),
+                "--slide", "0", "--left", "1.0", "--top", "1.0", "--width", "8.0", "--height", "4.5",
+                "--asset-id", FIXTURE_ASSET_ID, "--asset-commit", FIXTURE_COMMIT,
+            ]
+            _, out, err, code = run_capturing(ic.main)
+        finally:
+            sys.argv = old_argv
+        check(code is None, "insert_chart.py: identity overrides still insert an untrusted-origin SVG")
+        tags_override = _tags_in(pptx_out_override) if pptx_out_override.exists() else {}
+        check("GRUNT-WEB-LINK" not in tags_override
+              and tags_override.get("GRUNT-WEB-ASSETID") == FIXTURE_ASSET_ID.lower(),
+              "insert_chart.py: overrides write the identity tags and, deliberately, no GRUNT-WEB-LINK")
+        check(code is None and "No GRUNT-WEB-LINK" in json.loads(out).get("warning", ""),
+              "insert_chart.py: overrides still report the omitted link as a warning")
 
         # -- WITH --trust-origin: GRUNT-WEB-LINK IS written, byte-identical ------
         pptx_out_trusted = tmp_path / "out_trusted.pptx"

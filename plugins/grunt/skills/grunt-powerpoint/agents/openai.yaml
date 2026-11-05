@@ -1,0 +1,7 @@
+interface:
+  display_name: "Grunt PowerPoint"
+  short_description: "Make and change Grunt charts and tables inside PowerPoint"
+  icon_small: "./assets/icon-small.svg"
+  icon_large: "./assets/icon-large.png"
+  brand_color: "#00D6A8"
+  default_prompt: "Use $grunt-powerpoint to add a waterfall chart of this year's profit bridge to slide 3 of my open presentation."

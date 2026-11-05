@@ -60,7 +60,10 @@ against any OTHER capability server, pass the repeatable --trust-origin flag
 Origins are not secrets, so this is safe on argv. An origin is NEVER
 auto-trusted merely because it appears inside the SVG being parsed -- trust
 comes only from this flag or the built-in default, which is what keeps the
-allowlist meaningful as a security boundary.
+allowlist meaningful as a security boundary. A placement whose link is well
+formed and for its own asset version, but on an origin outside the allowlist,
+stops the whole batch with an error that names the origin and the flag: the
+deck is never saved without that link just because the flag was forgotten.
 
 The shape structure matches the Grunt add-in's native format:
   - <p:sp> shape (not <p:pic>)
@@ -76,8 +79,8 @@ Usage:
         --slide 0 \\
         --left 1.0 --top 1.0 --width 8.0 --height 4.5
 
-    # Against a non-default capability server (e.g. local dev), add
-    # --trust-origin (repeatable) or GRUNT-WEB-LINK is silently never written:
+    # Against a non-default capability server (e.g. staging or local dev), add
+    # --trust-origin (repeatable), or the placement is refused with an error:
     python insert_chart.py \\
         --svg chart.svg \\
         --pptx template.pptx \\
@@ -767,6 +770,30 @@ def _validate_trust_origin(value: str) -> str:
     return f"{parsed.scheme}://{parsed.hostname}" + (f":{port}" if port is not None else "")
 
 
+def _untrusted_origin(url, trusted_origins):
+    """The origin of a well-formed asset link that lies outside `trusted_origins`, written the way
+    --trust-origin takes it. None for a trusted origin, for anything that is not such a link, and for an
+    origin --trust-origin would refuse, so an error never names a value the caller could not pass."""
+    if not isinstance(url, str):
+        return None
+    try:
+        parsed = urlsplit(url)
+        origin = _validate_trust_origin(f"{parsed.scheme}://{parsed.netloc}")
+    except (ValueError, argparse.ArgumentTypeError):
+        return None
+    if origin in trusted_origins or parse_carrier_url(url, (origin,)) is None:
+        return None
+    return origin
+
+
+def _untrusted_origin_error(index, origin):
+    """Names the origin, never the link: the link's query carries the bearer token."""
+    return (f"Placement {index}: its asset link is on {origin}, which is not a trusted origin, so its shape "
+            "would have no GRUNT-WEB-LINK tag (the permanent link to its Grunt asset). If you downloaded it from "
+            f"that server on purpose (download_chart.py --trust-origin {origin}), pass --trust-origin {origin} "
+            "to insert_chart.py too.")
+
+
 def _beyond_slide(prs, left, top, width, height) -> bool:
     """Off-slide check in inches, shared by SVG and native placements. The tolerance
     absorbs float noise in exported bounds (e.g. y = -1e-05 pt at the slide edge)."""
@@ -784,8 +811,16 @@ def _prepare_native(prs, index, slide_index, path, allowed_origins):
     asset_id, asset_commit = document["assetId"].lower(), document["projectCommitKey"]
     # The same trusted-origin and identity checks as an SVG carrier; otherwise omit the link.
     source = document.get("source")
-    carrier = parse_carrier_url(source, allowed_origins) if isinstance(source, str) else None
-    link = source if carrier and (carrier["asset_id"], carrier["asset_commit"]) == (asset_id, asset_commit) else None
+
+    def link_on(origins):
+        carrier = parse_carrier_url(source, origins) if isinstance(source, str) else None
+        return source if carrier and (carrier["asset_id"], carrier["asset_commit"]) == (asset_id, asset_commit) else None
+
+    link = link_on(allowed_origins)
+    # A link that only its origin keeps out is a forgotten --trust-origin, not a missing link.
+    origin = None if link else _untrusted_origin(source, allowed_origins)
+    if origin and link_on((origin,)):
+        raise ValueError(_untrusted_origin_error(index, origin))
     shapes = []
     for number, item in enumerate(objects, 1):
         points = [item["svgBounds"][key] for key in ("x", "y", "width", "height")]
@@ -925,6 +960,11 @@ def insert_charts(pptx, output, placements, *, base_dir=Path('.'), trusted_origi
         has_override = "asset_id" in placement or "asset_commit" in placement
         if has_override and not {"asset_id", "asset_commit"} <= placement.keys():
             raise ValueError(f"Placement {index}: asset_id and asset_commit overrides must be supplied together.")
+        # Overrides omit the link on purpose; otherwise a carrier kept out only by its origin stops the batch.
+        if not has_override and not metadata["link"]:
+            origin = _untrusted_origin(root.get(CARRIER_SRC_ATTR), allowed_origins)
+            if origin and parse_svg_metadata(svg_bytes, tuple(trusted_origins) + (origin,))["link"]:
+                raise ValueError(_untrusted_origin_error(index, origin))
         asset_id = placement["asset_id"] if has_override else metadata["asset_id"]
         asset_commit = placement["asset_commit"] if has_override else metadata["asset_commit"]
         if not isinstance(asset_id, str) or not GUID_PATTERN.fullmatch(asset_id):
@@ -1033,16 +1073,18 @@ def main():
         "--trust-origin", action="append", default=[], dest="trust_origin",
         type=_validate_trust_origin, metavar="ORIGIN",
         help=(
-            "Additional HTTPS origin to trust for the SVG's embedded "
-            "data-grunt-src carrier, in ADDITION to the built-in default "
-            "(https://assets.grunt.io). Repeatable. Origins are not secrets, so "
-            "this is safe on the command line -- e.g. against a local "
-            "capability server: --trust-origin https://localhost:7299. "
-            "Without this, a carrier from any other origin is treated as "
-            "absent (not an error) and no GRUNT-WEB-LINK tag is written. "
-            "Matching is EXACT (e.g. https://assets.grunt.io:443 is a different "
-            "entry than the default, fail-closed); give an IDN/Unicode host "
-            "exactly as the carrier presents it."
+            "Additional HTTPS origin to trust for asset links (an SVG's "
+            "data-grunt-src carrier or a native placement's saved source), in "
+            "ADDITION to the built-in default (https://assets.grunt.io). "
+            "Repeatable; pass the same origins as to download_chart.py. Origins "
+            "are not secrets, so this is safe on the command line -- e.g. "
+            "against a local capability server: --trust-origin "
+            "https://localhost:7299. Without it, a placement whose link is on "
+            "any other origin stops the batch with an error naming that origin, "
+            "and nothing is written. Matching is EXACT (e.g. "
+            "https://assets.grunt.io:443 is a different entry than the default, "
+            "fail-closed); give an IDN/Unicode host exactly as the carrier "
+            "presents it."
         ),
     )
     args = parser.parse_args()
