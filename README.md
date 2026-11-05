@@ -54,6 +54,10 @@ Each user signs in to the Grunt MCP server with their own Grunt account:
   sign-in in your browser.
 - **Codex CLI:** run `codex mcp list` to find the Grunt server's name, then
   `codex mcp login <name>`.
+- **Claude Desktop, claude.ai, Cowork and Claude for PowerPoint:** connect your
+  organization's Grunt connector in **Customize > Connectors**, and turn it on
+  in a chat under **+** > **Connectors**. The plugin's own Grunt server can show
+  up there too and ask you to sign in; you don't need it.
 - **Other agents:** sign in from the agent's MCP or connector settings.
 
 Some apps show the new tools only in a new session or after a restart.

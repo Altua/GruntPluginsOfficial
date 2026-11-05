@@ -33,7 +33,9 @@ account.
    only reads; it creates and changes nothing.
    - A list of font names: you are connected. Keep the list for choosing fonts.
    - An authentication error (for example 401, 403, "unauthorized", "sign in" or
-     an expired token): you are not signed in. Go to step 3.
+     an expired token): you are not signed in to that server. If step 1 found
+     another Grunt server, check it the same way; if none is signed in, go to
+     step 3.
    - Any other error: try once more. If it fails again, tell the user that Grunt
      is not responding, quote the error, and stop.
 3. **If the tools are missing or you are not signed in, stop.** Do not draw the
@@ -52,8 +54,11 @@ account.
    still don't appear, tell the user that the app may need to reload its MCP
    servers (a new session or an app restart), and stop. Do not keep checking.
 
-If more than one Grunt server is connected, choose one and use it for the whole
-deliverable, so every asset is created and updated under the same account.
+An app can list more than one Grunt server, for example the organization's Grunt
+connector and the server the Grunt plugin adds. Use one that is signed in, and
+do not ask the user to sign in to another while one works. Then use only that
+server for the whole deliverable, so every asset is created, linked and updated
+under the same account. [CONNECT.md](CONNECT.md) says which to use in each app.
 
 ## How a Grunt chart sits on a slide
 
