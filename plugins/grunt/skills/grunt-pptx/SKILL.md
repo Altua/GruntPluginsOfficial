@@ -40,7 +40,9 @@ account.
    only reads; it creates and changes nothing.
    - A list of font names: you are connected. Keep the list for choosing fonts.
    - An authentication error (for example 401, 403, "unauthorized", "sign in" or
-     an expired token): you are not signed in. Go to step 3.
+     an expired token): you are not signed in to that server. If step 1 found
+     another Grunt server, check it the same way; if none is signed in, go to
+     step 3.
    - Any other error: try once more. If it fails again, tell the user that Grunt
      is not responding, quote the error, and stop.
 3. **If the tools are missing or you are not signed in, stop.** Do not draw the
@@ -59,8 +61,11 @@ account.
    still don't appear, tell the user that the app may need to reload its MCP
    servers (a new session or an app restart), and stop. Do not keep checking.
 
-If more than one Grunt server is connected, choose one and use it for the whole
-deliverable, so every asset is created and updated under the same account.
+An app can list more than one Grunt server, for example the organization's Grunt
+connector and the server the Grunt plugin adds. Use one that is signed in, and
+do not ask the user to sign in to another while one works. Then use only that
+server for the whole deliverable, so every asset is created, linked and updated
+under the same account. [CONNECT.md](CONNECT.md) says which to use in each app.
 
 ## One-time setup
 
@@ -119,6 +124,11 @@ Do not add LibreOffice's program folder to `PATH`, because it has its own
    python "<skill-dir>/scripts/download_chart.py" --format pptx --url-file private/revenue.url --output assets/revenue.pptx.json
    ```
 
+   The helpers trust asset links on `https://assets.grunt.io`. When the user
+   works on another Grunt server, such as staging or a local one, add
+   `--trust-origin <origin>` with that server's asset origin (`https://host` or
+   `https://host:port`), here and in step 6.
+
    The helper follows the manifest's `links.pptx.href` unchanged, checks HTTPS,
    response types, redirects, size and identity, deletes the URL file after
    reading it, and prints no tokens or chart data. It reports each object's type
@@ -163,6 +173,16 @@ Do not add LibreOffice's program folder to `PATH`, because it has its own
    writes the native and `GRUNT-WEB-*` tags, and saves atomically. Unknown
    fields, off-slide rectangles and invalid indexes are rejected — re-download
    to move or resize, rather than bypassing validation.
+
+   For assets from a Grunt server other than production (step 4), pass the
+   same `--trust-origin <origin>`:
+
+   ```sh
+   python "<skill-dir>/scripts/insert_chart.py" --pptx skeleton.pptx --output final.pptx --manifest placements.json --trust-origin <origin>
+   ```
+
+   Without it the helper stops with an error that names the origin, and writes
+   nothing, instead of saving shapes without their `GRUNT-WEB-LINK`.
 7. **Verify the saved deck.**
 
    ```sh
@@ -220,7 +240,9 @@ slow to open. Tell the user.
 
 When the user wants a chart or table from an Excel workbook on their computer
 kept connected, linked or updating, give the asset a connection to that file.
-Grunt in PowerPoint on that computer then refreshes it from the workbook.
+When the workbook is saved, Grunt in PowerPoint on that computer then shows that
+the object has new data, and the user applies it with Update (or Update all in
+the Data Connection Manager). Grunt does not redraw it on its own.
 
 1. **Use the workbook's full path on the user's computer**, such as
    `C:\Users\name\Documents\Sales.xlsx`. A path in a sandbox or cloud workspace,
@@ -244,10 +266,11 @@ Grunt in PowerPoint on that computer then refreshes it from the workbook.
 6. **Tell the user** that the deck shows the values read now. The connection
    takes effect only when the deck is opened in PowerPoint, on the computer
    where the workbook is, with a Grunt add-in that supports web assets: it
-   imports the picture as a Grunt object, and from then on refreshes it from the
-   workbook. Until then the object is a static picture. Unless you opened the
-   deck in PowerPoint with Grunt yourself, say that you have not seen it
-   refresh. Moving or renaming the workbook breaks the connection; Grunt's Data
+   imports the picture as a Grunt object, and from then on shows when a saved
+   workbook has new data, which the user applies with Update. Until then the
+   object is a static picture. Unless you opened the deck in PowerPoint with
+   Grunt yourself, say that you have not seen it update. Moving or renaming the
+   workbook breaks the connection; Grunt's Data
    Connection Manager in PowerPoint can point it at the new place.
 
 **Only a copy.** When you have the workbook only as a copy, such as a file the
@@ -310,7 +333,8 @@ put lasting emphasis in the chart or an annotation.
 - A native shape is a snapshot of the asset's commit when the deck was built.
   Later edits to the asset do not reach it; rebuild the placement to update it.
 - `https://assets.grunt.io` is trusted by default. Other capability origins need
-  an explicit `--trust-origin`; a separate SVG or placement delivery host needs
+  an explicit `--trust-origin`, on both `download_chart.py` and
+  `insert_chart.py`; a separate SVG or placement delivery host needs
   `--trust-delivery-origin`. Never trust an origin because it appears in a
   response.
 - `asset_id`/`asset_commit` manifest overrides (or `--asset-id`/`--asset-commit`)
