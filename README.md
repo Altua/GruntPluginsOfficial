@@ -6,7 +6,7 @@ any agent that reads `SKILL.md` folders and can call MCP tools.
 
 | Plugin | What you get |
 | --- | --- |
-| [`grunt`](plugins/grunt) | The **Grunt** MCP server (charts, tables and visual grids) plus three skills: **grunt-powerpoint** makes and changes Grunt charts and tables inside PowerPoint, **grunt-pptx** builds .pptx files with Grunt objects outside PowerPoint, **grunt-html** builds interactive, self-contained HTML reports. |
+| [`grunt`](plugins/grunt) | The **Grunt** MCP server (charts, tables and visual grids) plus four skills: **grunt-powerpoint** makes and changes Grunt charts and tables inside PowerPoint, **grunt-pptx** builds .pptx files with Grunt objects outside PowerPoint, **grunt-html** builds interactive, self-contained HTML reports, **grunt-slides** puts them into Claude Slides decks and changes them in place. |
 
 ## Install
 
@@ -61,7 +61,7 @@ Each user signs in to the Grunt MCP server with their own Grunt account:
 - **Other agents:** sign in from the agent's MCP or connector settings.
 
 Some apps show the new tools only in a new session or after a restart.
-**grunt-pptx** and **grunt-html** check the connection before they start and tell
+**grunt-pptx**, **grunt-html** and **grunt-slides** check the connection before they start and tell
 you what to do if Grunt is not connected;
 [`CONNECT.md`](plugins/grunt/skills/grunt-pptx/CONNECT.md) lists the steps they
 give. **grunt-powerpoint** uses the Grunt connector of the PowerPoint host it runs
@@ -74,6 +74,7 @@ also invoke it directly):
 
 - `/grunt:grunt-pptx` — "Create a Grunt bar chart of quarterly revenue by region and put it on slide 2 of deck.pptx."
 - `/grunt:grunt-html` — "Build an HTML report with a Grunt line chart of monthly customers and a KPI table."
+- **grunt-slides**, in a conversation with a Claude Slides deck — "Add a Grunt bar chart of revenue by quarter to slide 3", or select a chart on a slide and ask "Make the 2026 bars orange."
 - **grunt-powerpoint**, in Claude for PowerPoint or another host with Grunt's
   `deck_*` tools — "Add a waterfall chart of this year's profit bridge to slide 3."
 
@@ -86,6 +87,7 @@ Requirements on your machine:
   pypdfium2; about 40 MB) into a virtual environment. Decks are rendered for
   checking with PowerPoint on Windows, or else with LibreOffice.
 - **grunt-html:** Node.js 22.22+. No `npm install` needed.
+- **grunt-slides:** Python 3.10+ with network access to `assets.grunt.io`. It uses grunt-pptx's downloader, so install the whole plugin.
 
 ## Share with a team (Claude Code)
 
@@ -124,7 +126,7 @@ marketplace and plugin when they trust the folder:
 - Write skills for any agent: refer to the skill's folder as `<skill-dir>`
   rather than a host variable, and describe tools by what they do rather than by
   one host's tool names. The connection check and `CONNECT.md` are shared by
-  the file-building skills (grunt-pptx, grunt-html) and must stay identical.
+  the file-building skills (grunt-pptx, grunt-html, grunt-slides) and must stay identical.
   grunt-powerpoint runs inside PowerPoint on the host's Grunt connector and has
   neither; keep its body short, because the host loads it on most chart requests.
 - Before pushing, run:
@@ -135,4 +137,5 @@ marketplace and plugin when they trust the folder:
   python -m unittest discover -s tests -p "test_*.py"
   python -m unittest discover -s plugins/grunt/skills/grunt-pptx/scripts -p "test_*.py"
   python plugins/grunt/skills/grunt-pptx/scripts/test_scripts.py
+  python -m unittest discover -s plugins/grunt/skills/grunt-slides/scripts -p "test_*.py"
   ```
