@@ -16,6 +16,7 @@ contains no link or token and is safe to upload to a deck. Diagnostics contain n
 
 import argparse
 import json
+import math
 import re
 import shutil
 import sys
@@ -37,6 +38,11 @@ SLIDE_PX_PER_POINT = 2.0
 POINTS_PER_CSS_PX = 0.75
 # Slides refuses inline drawings over 52 KB; uploads have room, but a chart this large is unusual.
 LARGE_SVG_BYTES = 2 * 1024 * 1024
+
+# Grunt writes unitless lengths in points (see above); explicit absolute units are converted.
+POINTS_PER_UNIT = {"": 1.0, "pt": 1.0, "px": 0.75, "in": 72.0, "cm": 72 / 2.54, "mm": 72 / 25.4, "pc": 12.0}
+LENGTH = re.compile(r"\s*\+?(\d*\.?\d+(?:[eE][+-]?\d+)?)\s*(pt|px|in|cm|mm|pc)?\s*")
+CSS_URL = re.compile(r"url\(\s*(['\"]?)(.*?)\1\s*\)", re.IGNORECASE)
 
 CLASS_RULE = re.compile(r"\.(-?[A-Za-z_][\w-]*)\s*\{([^{}]*)\}")
 STYLE_COMMENT = re.compile(r"/\*.*?\*/", re.DOTALL)
@@ -81,6 +87,14 @@ def is_external_reference(value):
     return bool(value) and not value.startswith("#") and not value.startswith("data:")
 
 
+def has_external_url(value):
+    """True when a CSS value holds a url() that is not a local #id or data: URI (or cannot be read)."""
+    if not value or "url(" not in value.lower():
+        return False
+    targets = [target for _, target in CSS_URL.findall(value)]
+    return not targets or any(is_external_reference(target) for target in targets)
+
+
 def make_slides_safe(svg_bytes):
     """Return (bytes, warnings) for an SVG that Slides keeps intact and that carries no link."""
     try:
@@ -110,6 +124,7 @@ def make_slides_safe(svg_bytes):
         if name == "image":
             images += 1
 
+    outside_urls = False
     for element in root.iter():
         classes = (element.attrib.pop("class", "") or "").split()
         if classes:
@@ -121,7 +136,22 @@ def make_slides_safe(svg_bytes):
                 element.set("style", format_declarations(merged))
         for attribute in [key for key in element.attrib if local_name(key).startswith("data-") or local_name(key).startswith("on")]:
             del element.attrib[attribute]
+        # A url() in a presentation attribute or a style (class rules included, merged above)
+        # would make a viewer's browser fetch it: keep only local #id and data: references.
+        style = element.get("style")
+        if style is not None and has_external_url(style):
+            kept = {name: value for name, value in parse_declarations(style).items() if not has_external_url(value)}
+            if kept:
+                element.set("style", format_declarations(kept))
+            else:
+                del element.attrib["style"]
+            outside_urls = True
+        for attribute in [key for key, value in element.attrib.items() if key != "style" and has_external_url(value)]:
+            del element.attrib[attribute]
+            outside_urls = True
 
+    if outside_urls:
+        warnings.append("Removed styles that referenced an outside file.")
     if images:
         warnings.append(f"The chart has {images} embedded image(s), such as a logo; Slides removes them from uploaded SVGs.")
 
@@ -129,18 +159,29 @@ def make_slides_safe(svg_bytes):
 
 
 def svg_size(root):
-    """Width and height in the SVG's own units (points for Grunt), from the root attributes or else the viewBox."""
-    def number(value):
-        match = re.fullmatch(r"\s*([0-9]*\.?[0-9]+)\s*(px)?\s*", value or "")
-        return float(match.group(1)) if match else None
+    """Width and height in points. Unitless lengths are points, as Grunt writes them; pt, px, in, cm,
+    mm and pc convert. A missing or relative side comes from the viewBox's aspect ratio."""
+    def points(value):
+        match = LENGTH.fullmatch(value or "")
+        return float(match.group(1)) * POINTS_PER_UNIT[match.group(2) or ""] if match else None
 
-    width, height = number(root.get("width")), number(root.get("height"))
-    if width and height:
+    def usable(value):
+        return value is not None and math.isfinite(value) and value > 0
+
+    width, height = points(root.get("width")), points(root.get("height"))
+    if usable(width) and usable(height):
         return width, height
-    box = (root.get("viewBox") or "").replace(",", " ").split()
-    if len(box) == 4:
-        return float(box[2]), float(box[3])
-    return None, None
+    try:
+        box = [float(value) for value in (root.get("viewBox") or "").replace(",", " ").split()]
+    except ValueError:
+        box = []
+    if len(box) != 4 or not (usable(box[2]) and usable(box[3])):
+        return None, None
+    if usable(width):
+        return width, width * box[3] / box[2]
+    if usable(height):
+        return height * box[2] / box[3], height
+    return box[2], box[3]
 
 
 def slide_pixels(points):

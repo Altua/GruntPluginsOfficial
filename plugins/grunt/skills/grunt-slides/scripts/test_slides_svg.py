@@ -73,5 +73,59 @@ class MakeSlidesSafeTests(unittest.TestCase):
             slides_svg.make_slides_safe(b"<svg")
 
 
+def size_of(attributes):
+    return slides_svg.svg_size(ET.fromstring(f'<svg xmlns="http://www.w3.org/2000/svg" {attributes}/>'))
+
+
+class SvgSizeTests(unittest.TestCase):
+    def test_unitless_lengths_are_grunt_points(self):
+        self.assertEqual(size_of('width="831.75" height="360"'), (831.75, 360.0))
+
+    def test_absolute_units_convert_to_points(self):
+        self.assertEqual(size_of('width="800pt" height="450pt"'), (800.0, 450.0))
+        self.assertEqual(size_of('width="1109px" height="480px" viewBox="0 0 10 10"'), (831.75, 360.0))
+        self.assertEqual(size_of('width="2in" height="1in"'), (144.0, 72.0))
+        self.assertEqual(size_of('width="3pc" height="6pc"'), (36.0, 72.0))
+        width, height = size_of('width="2.54cm" height="25.4mm"')
+        self.assertAlmostEqual(width, 72.0)
+        self.assertAlmostEqual(height, 72.0)
+
+    def test_relative_or_missing_sides_use_the_viewbox(self):
+        self.assertEqual(size_of('width="100%" height="100%" viewBox="0 0 400 300"'), (400.0, 300.0))
+        self.assertEqual(size_of('width="800pt" viewBox="0 0 400 300"'), (800.0, 600.0))
+        self.assertEqual(size_of('height="150pt" viewBox="0 0 400 300"'), (200.0, 150.0))
+        self.assertEqual(size_of('width="0" height="10"'), (None, None))
+
+
+class ExternalUrlTests(unittest.TestCase):
+    SVG = b"""<svg xmlns="http://www.w3.org/2000/svg" width="100" height="50">
+<style>.outside{fill:url(http://x.test/paint);stroke:#123456}</style>
+<defs><linearGradient id="grad"><stop offset="0" stop-color="#000"/></linearGradient></defs>
+<rect id="a" fill="url(https://example.com/a)" width="10" height="10"/>
+<rect id="b" style="fill:url('https://e.test/b');stroke:#000000" width="10" height="10"/>
+<rect id="c" fill="url(#grad)" filter="url( &quot;https://e.test/f&quot; )" width="10" height="10"/>
+<rect id="d" class="outside" width="10" height="10"/>
+<rect id="e" style="fill:url(https://e.test/only)" width="10" height="10"/>
+</svg>"""
+
+    def setUp(self):
+        output, self.warnings = slides_svg.make_slides_safe(self.SVG)
+        self.text = output.decode("utf-8")
+        self.rects = {r.get("id"): r for r in ET.fromstring(output).findall(".//s:rect", NS)}
+
+    def test_no_outside_url_survives(self):
+        for fragment in ("example.com", "e.test", "x.test"):
+            self.assertNotIn(fragment, self.text)
+        self.assertTrue(any("outside file" in warning for warning in self.warnings))
+
+    def test_local_references_and_other_styles_stay(self):
+        self.assertEqual(self.rects["c"].get("fill"), "url(#grad)")
+        self.assertIsNone(self.rects["c"].get("filter"))
+        self.assertIsNone(self.rects["a"].get("fill"))
+        self.assertEqual(self.rects["b"].get("style"), "stroke:#000000")
+        self.assertEqual(self.rects["d"].get("style"), "stroke:#123456")
+        self.assertIsNone(self.rects["e"].get("style"))
+
+
 if __name__ == "__main__":
     unittest.main()
