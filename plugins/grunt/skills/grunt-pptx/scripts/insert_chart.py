@@ -116,7 +116,8 @@ import tempfile
 # `python -I` leaves the script's own folder off sys.path; the helpers import each other.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from pptx_validation import (validate_ppt_svg, fit_placement, svg_viewport, svg_dimensions_points,
-                             validate_native_placement)
+                             validate_native_placement, placeholder_geometry_problems,
+                             placeholder_geometry_report)
 
 
 # ---------------------------------------------------------------------------
@@ -886,12 +887,17 @@ def _already_placed(index, asset_id, slide, earlier_asset_id):
 
 def insert_charts(pptx, output, placements, *, base_dir=Path('.'), trusted_origins=(),
                   revision_policy="pinned", fit="contain", preview_dir=None):
-    """Preflight the whole manifest, then load/save once. SVGs remain byte-identical."""
+    """Preflight the deck's placeholders and the whole manifest, then load/save once. SVGs remain
+    byte-identical."""
     if not isinstance(placements, list) or not placements:
         raise ValueError("Manifest must be a non-empty JSON array of placements.")
     if revision_policy not in ("pinned", "latest"):
         raise ValueError("revision_policy must be 'pinned' or 'latest'.")
     prs = Presentation(pptx)
+    # PowerPoint draws these elsewhere than LibreOffice and python-pptx, so only this check catches them.
+    problems = placeholder_geometry_problems(pptx)
+    if problems:
+        raise ValueError(placeholder_geometry_report(problems))
     prepared = []
     allowed = {"svg", "slide", "left", "top", "width", "height", "asset_id", "asset_commit", "fit"}
     required = {"svg", "slide", "left", "top", "width", "height"}

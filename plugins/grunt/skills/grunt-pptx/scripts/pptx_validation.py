@@ -1,15 +1,31 @@
-"""PowerPoint export preflight. Reads SVG without changing the bytes embedded in PPTX."""
+"""PowerPoint export preflight. Reads SVG without changing the bytes embedded in PPTX, and
+finds placeholders that PowerPoint draws away from their layout. Standard library only."""
 import base64
 import binascii
 import math
+import posixpath
 import re
 import xml.etree.ElementTree as ET
+import zipfile
 
 SVG_NS = "http://www.w3.org/2000/svg"
 GUID = re.compile(r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}\Z")
 LOWERCASE_COMMIT = re.compile(r"[0-9a-f]{64}\Z")
 NATIVE_BOUNDS = ("x", "y", "width", "height")
 NATIVE_OPTIONAL_PAYLOADS = ("dataServiceBase64", "resourcesBase64", "shapeBoundsBase64")
+
+P_NS = "http://schemas.openxmlformats.org/presentationml/2006/main"
+A_NS = "http://schemas.openxmlformats.org/drawingml/2006/main"
+R_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+MC_FALLBACK = "{http://schemas.openxmlformats.org/markup-compatibility/2006}Fallback"
+PLACEHOLDER_SHAPES = frozenset(f"{{{P_NS}}}{name}" for name in ("sp", "pic", "graphicFrame"))
+PLACEHOLDER_GEOMETRY_ADVICE = (
+    "A placeholder takes its position and size from its layout only while it has no <a:xfrm> of its own. "
+    "PowerPoint reads a position left out of that <a:xfrm> as the slide's top-left corner and a size left out "
+    "as zero; LibreOffice and python-pptx take both from the layout, so a LibreOffice render and a python-pptx "
+    "readback can look right. python-pptx writes such an <a:xfrm> when only some of a placeholder's left, top, "
+    "width and height are set, or only its rotation. Fix: set all four together, or delete the placeholder's "
+    "<a:xfrm> so that the layout's position and size apply again.")
 
 
 def validate_ppt_svg(svg_bytes):
@@ -139,3 +155,83 @@ def validate_native_placement(document):
             if item.get(name) is not None and not _is_base64(item[name]):
                 raise ValueError(f"{where}: {name} must be non-empty base64 when present.")
     return objects
+
+
+def _part_xml(archive, name):
+    data = archive.read(name)
+    if b"<!DOCTYPE" in data:
+        raise ValueError(f"{name} declares a DOCTYPE, which PowerPoint never writes.")
+    return ET.fromstring(data)
+
+
+def _slides_in_order(archive):
+    """The deck's slide parts, in the order PowerPoint shows the slides."""
+    presentation = _part_xml(archive, "ppt/presentation.xml")
+    targets = {rel.get("Id"): rel.get("Target", "") for rel in _part_xml(archive, "ppt/_rels/presentation.xml.rels")
+               if rel.get("TargetMode") != "External"}
+    parts = []
+    for slide in presentation.iter(f"{{{P_NS}}}sldId"):
+        target = targets.get(slide.get(f"{{{R_NS}}}id"))
+        if target:
+            parts.append(target[1:] if target.startswith("/") else posixpath.normpath(posixpath.join("ppt", target)))
+    return parts
+
+
+def _placeholders(element):
+    """Placeholder shapes in document order, leaving out the mc:Fallback copy of an alternate shape."""
+    for child in element:
+        if child.tag == MC_FALLBACK:
+            continue
+        if child.tag in PLACEHOLDER_SHAPES and child.find(f"*/{{{P_NS}}}nvPr/{{{P_NS}}}ph") is not None:
+            yield child
+        else:
+            yield from _placeholders(child)
+
+
+def _geometry_faults(xfrm):
+    faults = [] if xfrm.find(f"{{{A_NS}}}off") is not None else ["no position"]
+    size = xfrm.find(f"{{{A_NS}}}ext")
+    if size is None:
+        return faults + ["no size"]
+    for label, attribute in (("width", "cx"), ("height", "cy")):
+        try:
+            value = int(size.get(attribute))
+        except (TypeError, ValueError):
+            faults.append(f"no {label}")
+            continue
+        if value <= 0:
+            faults.append(f"{label} 0")
+    return faults
+
+
+def placeholder_geometry_problems(pptx):
+    """One line per placeholder whose own <a:xfrm> leaves out part of its position or size, or makes it zero.
+
+    Each line names the slide (1-based, in deck order), the shape and its placeholder idx; see
+    PLACEHOLDER_GEOMETRY_ADVICE for what PowerPoint does with them and the fix. A placeholder without an
+    <a:xfrm> of its own takes its layout's position and size, and is fine. Unreadable decks raise ValueError.
+    """
+    problems = []
+    try:
+        with zipfile.ZipFile(pptx) as archive:
+            for number, part in enumerate(_slides_in_order(archive), 1):
+                for shape in _placeholders(_part_xml(archive, part)):
+                    xfrm = shape.find(f"{{{P_NS}}}spPr/{{{A_NS}}}xfrm")
+                    if xfrm is None:
+                        xfrm = shape.find(f"{{{P_NS}}}xfrm")  # a graphic frame's own transform
+                    faults = [] if xfrm is None else _geometry_faults(xfrm)
+                    if faults:
+                        properties = shape.find(f"*/{{{P_NS}}}cNvPr")
+                        name = " ".join(((properties.get("name") if properties is not None else None) or "").split())
+                        idx = shape.find(f"*/{{{P_NS}}}nvPr/{{{P_NS}}}ph").get("idx", "0")
+                        problems.append(f'Slide {number}, placeholder "{name[:80]}" (idx {idx[:10]}): '
+                                        f'{", ".join(faults)}.')
+    except (OSError, KeyError, zipfile.BadZipFile, ET.ParseError) as error:
+        raise ValueError(f"Could not read the deck's slides to check their placeholders: {error}") from None
+    return problems
+
+
+def placeholder_geometry_report(problems):
+    """The problems as one message: which placeholders, what PowerPoint does with them and the fix."""
+    return ("PowerPoint will not draw these placeholders at their layout's position and size:\n  "
+            + "\n  ".join(problems) + "\n" + PLACEHOLDER_GEOMETRY_ADVICE)

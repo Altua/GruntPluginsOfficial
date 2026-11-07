@@ -6,7 +6,8 @@ recipient uses. It is driven through PowerShell, opens the deck read-only withou
 window, and leaves an instance the user already had open running. Otherwise, or when
 PowerPoint fails, LibreOffice renders it (PNG pages need pypdfium2). LibreOffice
 results establish LibreOffice compatibility only. This checks the assembled deck,
-not individual assets.
+not individual assets. Placeholders that PowerPoint draws away from their layout,
+which a LibreOffice render does not show, are listed in placeholder_problems.
 """
 import argparse
 import csv
@@ -17,6 +18,10 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+
+# `python -I` leaves the script's own folder off sys.path; the helpers import each other.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from pptx_validation import PLACEHOLDER_GEOMETRY_ADVICE, placeholder_geometry_problems
 
 CANDIDATES = (
     r"C:\Program Files\LibreOffice\program\soffice.com",
@@ -143,6 +148,20 @@ def render_with_libreoffice(pptx, output_dir, soffice, dpi):
 def render(pptx, output_dir, soffice=None, dpi=110, renderer="auto"):
     pptx, output_dir = Path(pptx).resolve(), Path(output_dir).resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
+    result = _render(pptx, output_dir, soffice, dpi, renderer)
+    try:
+        problems = placeholder_geometry_problems(pptx)
+    except ValueError:
+        problems = []  # the check cannot read this package; the render result stands on its own
+    if problems:
+        result["placeholder_problems"] = problems
+        result["warning"] = ("PowerPoint will not draw the placeholders in placeholder_problems at their layout's "
+                             "position and size, even where this render shows them there. "
+                             + PLACEHOLDER_GEOMETRY_ADVICE)
+    return result
+
+
+def _render(pptx, output_dir, soffice, dpi, renderer):
     powerpoint_error = None
     if renderer == "powerpoint" or (renderer == "auto" and sys.platform == "win32"):
         try:
