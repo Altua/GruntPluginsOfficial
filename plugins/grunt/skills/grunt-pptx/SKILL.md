@@ -313,12 +313,27 @@ deck open there.
 - The update is in the open presentation; the .pptx file has it once the user
   saves it in PowerPoint. Text written from the old values, such as a title,
   stays as it was until you change it with `deck_set_text`.
-- A `create_or_update_*` call with new `data` for a connected asset is refused.
-  Building the deck again from new assets replaces its objects, along with any
-  changes the user made to them in PowerPoint.
+- A `create_or_update_*` call changes the asset, not a deck built from it (see
+  "Refreshing the asset" below). Building the deck again from new assets
+  replaces its objects, along with any changes the user made to them in
+  PowerPoint.
 - If the Grunt tools have no `deck_update_data`, or the add-in answers
   `desktop_unsupported_command`, ask the user to press Update (or Update all in
   the Data Connection Manager) in PowerPoint and save the deck.
+
+**Refreshing the asset.** When the workbook has new values or new rows, or has
+moved, update the asset itself, which works outside PowerPoint too. Read the
+range again, header row and new rows included (steps 1 and 2, or
+`register_local_excel_connection` for an attached copy), and call the asset's
+`create_or_update_*` tool with its `assetId`, those values as `data` (for a
+table, `cells`) and a `dataImportDefinition` with the workbook's `filePath` and
+the range they fill. The asset stays connected, now to that range, and keeps its
+settings. A deck keeps the version it was built with: to put the new one in a
+.pptx file, mint a new edit link, then download and insert it again (Workflow
+steps 3 to 5), which replaces the object. In PowerPoint, Update and
+`deck_update_data` read the range the placed object is connected to, so rows
+added outside it reach the slide only when the asset is placed again or the
+range is changed in Grunt's Data Connection Manager.
 
 ## Sizing rules
 
