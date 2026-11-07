@@ -125,6 +125,14 @@ independently for the reading task.
    owner editing happens in Grunt. Only use `mode: "draft"` with an explicit edit
    grant for a private editable working copy. Possession of that draft grants
    editing of the shared asset. An edit is not an implicit independent copy.
+4. **Excel workbooks.** To keep a chart or table connected to a workbook on the
+   user's computer, create it with the range's values, header row included, as
+   `data` (for a table, `cells`) and
+   `"dataImportDefinition": {"$type": "excel", "filePath": "<full path>", "range": "Sales!A1:E5"}`.
+   When the workbook changes, update the asset the same way with its `assetId`:
+   the values read again, new rows included, and the `filePath` and the range
+   they fill. Readers of a report built earlier get the new version with
+   **Update chart to latest version**.
 
 Do not print capability URLs/tokens in diagnostics, comments, or visible report
 text. They belong only in the configuration file, the managed link records and

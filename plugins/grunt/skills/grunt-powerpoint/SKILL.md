@@ -54,9 +54,11 @@ do not ask the user to sign in to the other.
    and updates the placed objects in one undo step; the result lists the objects
    updated, already current, and not updated with why. A workbook on a network
    share, or one that can contain macros (`.xlsm`, `.xlsb`, `.xls`), is read only
-   while it is open in Excel. A `create_or_update_*` call with new `data` for a
-   connected chart is refused, and placing a new copy is a rebuild, not an
-   update: `deck_update_data` keeps the placed object and its formatting. Text
+   while it is open in Excel. It reads the range the object is connected to;
+   for rows added outside it, the user changes the range in Grunt's Data
+   Connection Manager. A `create_or_update_*` call changes only the asset, not
+   the object on the slide, and placing a new copy is a rebuild, not an update:
+   `deck_update_data` keeps the placed object and its formatting. Text
    such as a title written from the old values stays as it was until you change
    it with `deck_set_text`. If `deck_update_data` is missing, or the add-in
    answers `desktop_unsupported_command`, ask the user to press Update in Grunt.
