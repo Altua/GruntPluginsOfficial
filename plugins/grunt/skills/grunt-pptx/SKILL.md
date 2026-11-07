@@ -240,9 +240,10 @@ slow to open. Tell the user.
 
 When the user wants a chart or table from an Excel workbook on their computer
 kept connected, linked or updating, give the asset a connection to that file.
-When the workbook is saved, Grunt in PowerPoint on that computer then shows that
-the object has new data, and the user applies it with Update (or Update all in
-the Data Connection Manager). Grunt does not redraw it on its own.
+Saving the workbook does not change the deck: Grunt in PowerPoint on that
+computer shows that the object has new data, and the user applies it with Update
+(or Update all in the Data Connection Manager), or you do with `deck_update_data`
+(see "Updating a connected deck" below).
 
 1. **Use the workbook's full path on the user's computer**, such as
    `C:\Users\name\Documents\Sales.xlsx`. A path in a sandbox or cloud workspace,
@@ -267,7 +268,8 @@ the Data Connection Manager). Grunt does not redraw it on its own.
    takes effect only when the deck is opened in PowerPoint, on the computer
    where the workbook is, with a Grunt add-in that supports web assets: it
    imports the picture as a Grunt object, and from then on shows when a saved
-   workbook has new data, which the user applies with Update. Until then the
+   workbook has new data, which the user applies with Update, or you do with
+   `deck_update_data`. Until then the
    object is a static picture. Unless you opened the deck in PowerPoint with
    Grunt yourself, say that you have not seen it update. Moving or renaming the
    workbook breaks the connection; Grunt's Data
@@ -292,6 +294,31 @@ user attached in a chat app, you cannot read the original yourself.
 
 Never send `dataImportDefinition` without `filePath` or `workbookUrl`: the server
 refuses it rather than make an asset that only looks connected.
+
+**Updating a connected deck.** When the user asks to update, refresh or sync a
+deck's connected charts and tables, the new data is applied in PowerPoint, to the
+deck open there.
+
+- The deck has to be open in the user's PowerPoint with Grunt. If it is not, open
+  it there when you can run programs on the user's computer, or ask the user to.
+- Call `deck_get_context`, pick the deck by name, and call `deck_update_data` with
+  its `documentToken`. Without `slideNumber` it updates every connected object in
+  the presentation; with `slideNumber` alone, every one on that slide; with
+  `slideNumber` and `objectKeys` from `deck_read_slide`, those objects. Grunt reads
+  each workbook on the user's computer, as it is open in Excel or else as last
+  saved, and updates the objects in one undo step, keeping their formatting. The
+  result lists the objects updated, already current, and not updated with why. A
+  workbook on a network share, or one that can contain macros (`.xlsm`, `.xlsb`,
+  `.xls`), is read only while it is open in Excel.
+- The update is in the open presentation; the .pptx file has it once the user
+  saves it in PowerPoint. Text written from the old values, such as a title,
+  stays as it was until you change it with `deck_set_text`.
+- A `create_or_update_*` call with new `data` for a connected asset is refused.
+  Building the deck again from new assets replaces its objects, along with any
+  changes the user made to them in PowerPoint.
+- If the Grunt tools have no `deck_update_data`, or the add-in answers
+  `desktop_unsupported_command`, ask the user to press Update (or Update all in
+  the Data Connection Manager) in PowerPoint and save the deck.
 
 ## Sizing rules
 
