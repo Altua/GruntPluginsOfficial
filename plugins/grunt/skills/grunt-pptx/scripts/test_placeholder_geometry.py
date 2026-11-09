@@ -20,12 +20,18 @@ from test_pptx_quality import SVG
 P = "http://schemas.openxmlformats.org/presentationml/2006/main"
 A = "http://schemas.openxmlformats.org/drawingml/2006/main"
 MC = "http://schemas.openxmlformats.org/markup-compatibility/2006"
+P14 = "http://schemas.microsoft.com/office/powerpoint/2010/main"
+FUTURE = "http://example.com/presentationml/future"
 TITLE_ONLY = 5  # a layout of python-pptx's default template
 WIDTH_ONLY = 'Slide 1, placeholder "Title 1" (idx 0): no position, height 0.'
 
 
 def widen(title):
     title.width = Inches(9)
+
+
+def set_all_four(title):
+    title.left, title.top, title.width, title.height = title.left, title.top, Inches(9), title.height
 
 
 def add_title_slide(presentation, change=None):
@@ -42,6 +48,25 @@ def save(presentation, directory):
     return path
 
 
+def title_xml(change):
+    return add_title_slide(Presentation(), change).shapes.title._element.xml
+
+
+def save_alternate_title(directory, choices, fallback):
+    """A deck whose title is an mc:AlternateContent: an mc:Choice per (Requires, change), then the mc:Fallback.
+
+    The prefixes p14 and future are declared on the mc:AlternateContent, and undeclared is not declared.
+    """
+    presentation = Presentation()
+    title = add_title_slide(presentation).shapes.title._element
+    branches = "".join(f'<mc:Choice Requires="{requires}">{title_xml(change)}</mc:Choice>'
+                       for requires, change in choices)
+    title.getparent().replace(title, parse_xml(
+        f'<mc:AlternateContent xmlns:mc="{MC}" xmlns:p14="{P14}" xmlns:future="{FUTURE}">{branches}'
+        f'<mc:Fallback>{title_xml(fallback)}</mc:Fallback></mc:AlternateContent>'))
+    return save(presentation, directory)
+
+
 class PlaceholderGeometryTests(unittest.TestCase):
     def test_partial_and_zero_transforms_are_named_by_slide_and_shape(self):
         def left(title):
@@ -53,11 +78,8 @@ class PlaceholderGeometryTests(unittest.TestCase):
         def all_but_height(title):
             title.left, title.top, title.width = title.left, title.top, Inches(9)
 
-        def all_four(title):
-            title.left, title.top, title.width, title.height = title.left, title.top, Inches(9), title.height
-
         presentation = Presentation()
-        for change in (widen, left, rotate, all_but_height, all_four, None):
+        for change in (widen, left, rotate, all_but_height, set_all_four, None):
             add_title_slide(presentation, change)
         with tempfile.TemporaryDirectory() as tmp:
             self.assertEqual(placeholder_geometry_problems(save(presentation, tmp)), [
@@ -100,16 +122,24 @@ class PlaceholderGeometryTests(unittest.TestCase):
             self.assertEqual(placeholder_geometry_problems(save(presentation, tmp)),
                              ['Slide 1, placeholder "Table 8" (idx 13): no position.'])
 
-    def test_a_shape_in_alternate_content_is_reported_once(self):
-        presentation = Presentation()
-        title = add_title_slide(presentation, widen).shapes.title._element
-        tree = title.getparent()
-        xml = title.xml
-        tree.replace(title, parse_xml(
-            f'<mc:AlternateContent xmlns:mc="{MC}"><mc:Choice Requires="p14">{xml}</mc:Choice>'
-            f'<mc:Fallback>{xml}</mc:Fallback></mc:AlternateContent>'))
-        with tempfile.TemporaryDirectory() as tmp:
-            self.assertEqual(placeholder_geometry_problems(save(presentation, tmp)), [WIDTH_ONLY])
+    def test_alternate_content_is_checked_in_the_branch_powerpoint_uses(self):
+        cases = [
+            # PowerPoint understands its own p14 namespace, so it uses that choice and not the fallback.
+            ([("p14", widen)], set_all_four, [WIDTH_ONLY]),
+            ([("p14", set_all_four)], widen, []),
+            # A namespace from outside Office, or a prefix that is not declared, sends it to the next branch.
+            ([("future", widen)], set_all_four, []),
+            ([("future", set_all_four)], widen, [WIDTH_ONLY]),
+            ([("p14 future", widen)], set_all_four, []),
+            ([("undeclared", widen)], set_all_four, []),
+            ([("future", set_all_four), ("p14", widen)], set_all_four, [WIDTH_ONLY]),
+            # Branches that are copies of each other are reported once.
+            ([("p14", widen)], widen, [WIDTH_ONLY]),
+        ]
+        for choices, fallback, expected in cases:
+            label = [(requires, change.__name__) for requires, change in choices], fallback.__name__
+            with self.subTest(label), tempfile.TemporaryDirectory() as tmp:
+                self.assertEqual(placeholder_geometry_problems(save_alternate_title(tmp, choices, fallback)), expected)
 
     def test_an_unreadable_deck_is_a_value_error(self):
         with tempfile.TemporaryDirectory() as tmp:

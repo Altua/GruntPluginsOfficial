@@ -2,6 +2,7 @@
 finds placeholders that PowerPoint draws away from their layout. Standard library only."""
 import base64
 import binascii
+import io
 import math
 import posixpath
 import re
@@ -17,7 +18,14 @@ NATIVE_OPTIONAL_PAYLOADS = ("dataServiceBase64", "resourcesBase64", "shapeBounds
 P_NS = "http://schemas.openxmlformats.org/presentationml/2006/main"
 A_NS = "http://schemas.openxmlformats.org/drawingml/2006/main"
 R_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
-MC_FALLBACK = "{http://schemas.openxmlformats.org/markup-compatibility/2006}Fallback"
+MC_NS = "http://schemas.openxmlformats.org/markup-compatibility/2006"
+MC_ALTERNATE_CONTENT, MC_CHOICE, MC_FALLBACK = (f"{{{MC_NS}}}{name}" for name in ("AlternateContent", "Choice", "Fallback"))
+# The namespaces an mc:Choice may require and still be the branch PowerPoint uses: the standard's own and Office's
+# PowerPoint, DrawingML and VML extensions. A choice that requires any other namespace, or names a prefix that is
+# not declared, is taken as one PowerPoint skips for the next choice or the mc:Fallback.
+POWERPOINT_NAMESPACES = ("http://schemas.openxmlformats.org/", "http://purl.oclc.org/ooxml/",
+                         "http://schemas.microsoft.com/office/powerpoint/",
+                         "http://schemas.microsoft.com/office/drawing/", "urn:schemas-microsoft-com:")
 PLACEHOLDER_SHAPES = frozenset(f"{{{P_NS}}}{name}" for name in ("sp", "pic", "graphicFrame"))
 PLACEHOLDER_GEOMETRY_ADVICE = (
     "A placeholder takes its position and size from its layout only while it has no <a:xfrm> of its own. "
@@ -157,11 +165,37 @@ def validate_native_placement(document):
     return objects
 
 
-def _part_xml(archive, name):
+def _part_bytes(archive, name):
     data = archive.read(name)
     if b"<!DOCTYPE" in data:
         raise ValueError(f"{name} declares a DOCTYPE, which PowerPoint never writes.")
-    return ET.fromstring(data)
+    return data
+
+
+def _part_xml(archive, name):
+    return ET.fromstring(_part_bytes(archive, name))
+
+
+def _slide_xml(archive, name):
+    """A slide's root element, and for each mc:Choice in it the namespaces its Requires prefixes stand for.
+
+    ElementTree drops namespace declarations, so the prefixes are resolved while parsing. An undeclared
+    prefix stands for None.
+    """
+    root, scopes, declared, requires = None, [{}], {}, {}
+    for event, item in ET.iterparse(io.BytesIO(_part_bytes(archive, name)), events=("start-ns", "start", "end")):
+        if event == "start-ns":
+            declared[item[0]] = item[1]
+        elif event == "start":
+            scopes.append({**scopes[-1], **declared} if declared else scopes[-1])
+            declared = {}
+            if item.tag == MC_CHOICE:
+                requires[item] = [scopes[-1].get(prefix) for prefix in (item.get("Requires") or "").split()]
+            if root is None:
+                root = item
+        else:
+            scopes.pop()
+    return root, requires
 
 
 def _slides_in_order(archive):
@@ -177,15 +211,28 @@ def _slides_in_order(archive):
     return parts
 
 
-def _placeholders(element):
-    """Placeholder shapes in document order, leaving out the mc:Fallback copy of an alternate shape."""
+def _branch_powerpoint_uses(alternate, requires):
+    """The first mc:Choice whose required namespaces PowerPoint understands, else the mc:Fallback, else None."""
+    for branch in alternate:
+        if branch.tag == MC_FALLBACK:
+            return branch
+        namespaces = requires.get(branch)  # None unless the branch is an mc:Choice
+        if namespaces and all(namespace and namespace.startswith(POWERPOINT_NAMESPACES) for namespace in namespaces):
+            return branch
+    return None
+
+
+def _placeholders(element, requires):
+    """Placeholder shapes in document order, taking from each mc:AlternateContent only the branch PowerPoint uses."""
     for child in element:
-        if child.tag == MC_FALLBACK:
-            continue
-        if child.tag in PLACEHOLDER_SHAPES and child.find(f"*/{{{P_NS}}}nvPr/{{{P_NS}}}ph") is not None:
+        if child.tag == MC_ALTERNATE_CONTENT:
+            branch = _branch_powerpoint_uses(child, requires)
+            if branch is not None:
+                yield from _placeholders(branch, requires)
+        elif child.tag in PLACEHOLDER_SHAPES and child.find(f"*/{{{P_NS}}}nvPr/{{{P_NS}}}ph") is not None:
             yield child
         else:
-            yield from _placeholders(child)
+            yield from _placeholders(child, requires)
 
 
 def _geometry_faults(xfrm):
@@ -215,7 +262,7 @@ def placeholder_geometry_problems(pptx):
     try:
         with zipfile.ZipFile(pptx) as archive:
             for number, part in enumerate(_slides_in_order(archive), 1):
-                for shape in _placeholders(_part_xml(archive, part)):
+                for shape in _placeholders(*_slide_xml(archive, part)):
                     xfrm = shape.find(f"{{{P_NS}}}spPr/{{{A_NS}}}xfrm")
                     if xfrm is None:
                         xfrm = shape.find(f"{{{P_NS}}}xfrm")  # a graphic frame's own transform
