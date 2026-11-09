@@ -2,7 +2,6 @@
 finds placeholders that PowerPoint draws away from their layout. Standard library only."""
 import base64
 import binascii
-import io
 import math
 import posixpath
 import re
@@ -18,21 +17,16 @@ NATIVE_OPTIONAL_PAYLOADS = ("dataServiceBase64", "resourcesBase64", "shapeBounds
 P_NS = "http://schemas.openxmlformats.org/presentationml/2006/main"
 A_NS = "http://schemas.openxmlformats.org/drawingml/2006/main"
 R_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
-MC_NS = "http://schemas.openxmlformats.org/markup-compatibility/2006"
-MC_ALTERNATE_CONTENT, MC_CHOICE, MC_FALLBACK = (f"{{{MC_NS}}}{name}" for name in ("AlternateContent", "Choice", "Fallback"))
-# The namespaces an mc:Choice may require and still be the branch PowerPoint uses: the standard's own and Office's
-# PowerPoint, DrawingML and VML extensions. A choice that requires any other namespace, or names a prefix that is
-# not declared, is taken as one PowerPoint skips for the next choice or the mc:Fallback.
-POWERPOINT_NAMESPACES = ("http://schemas.openxmlformats.org/", "http://purl.oclc.org/ooxml/",
-                         "http://schemas.microsoft.com/office/powerpoint/",
-                         "http://schemas.microsoft.com/office/drawing/", "urn:schemas-microsoft-com:")
+MC_ALTERNATE_CONTENT = "{http://schemas.openxmlformats.org/markup-compatibility/2006}AlternateContent"
 PLACEHOLDER_SHAPES = frozenset(f"{{{P_NS}}}{name}" for name in ("sp", "pic", "graphicFrame"))
 PLACEHOLDER_GEOMETRY_ADVICE = (
     "A placeholder takes its position and size from its layout only while it has no <a:xfrm> of its own. "
     "PowerPoint reads a position left out of that <a:xfrm> as the slide's top-left corner and a size left out "
     "as zero; LibreOffice and python-pptx take both from the layout, so a LibreOffice render and a python-pptx "
     "readback can look right. python-pptx writes such an <a:xfrm> when only some of a placeholder's left, top, "
-    "width and height are set, or only its rotation. Fix: set all four together, or delete the placeholder's "
+    "width and height are set, or only its rotation. A placeholder in an mc:AlternateContent is listed when any of "
+    "its branches has such an <a:xfrm>, because the branch PowerPoint draws depends on the extensions its version "
+    "knows. Fix: set all four together, or delete the placeholder's "
     "<a:xfrm> so that the layout's position and size apply again.")
 
 
@@ -165,37 +159,11 @@ def validate_native_placement(document):
     return objects
 
 
-def _part_bytes(archive, name):
+def _part_xml(archive, name):
     data = archive.read(name)
     if b"<!DOCTYPE" in data:
         raise ValueError(f"{name} declares a DOCTYPE, which PowerPoint never writes.")
-    return data
-
-
-def _part_xml(archive, name):
-    return ET.fromstring(_part_bytes(archive, name))
-
-
-def _slide_xml(archive, name):
-    """A slide's root element, and for each mc:Choice in it the namespaces its Requires prefixes stand for.
-
-    ElementTree drops namespace declarations, so the prefixes are resolved while parsing. An undeclared
-    prefix stands for None.
-    """
-    root, scopes, declared, requires = None, [{}], {}, {}
-    for event, item in ET.iterparse(io.BytesIO(_part_bytes(archive, name)), events=("start-ns", "start", "end")):
-        if event == "start-ns":
-            declared[item[0]] = item[1]
-        elif event == "start":
-            scopes.append({**scopes[-1], **declared} if declared else scopes[-1])
-            declared = {}
-            if item.tag == MC_CHOICE:
-                requires[item] = [scopes[-1].get(prefix) for prefix in (item.get("Requires") or "").split()]
-            if root is None:
-                root = item
-        else:
-            scopes.pop()
-    return root, requires
+    return ET.fromstring(data)
 
 
 def _slides_in_order(archive):
@@ -211,28 +179,17 @@ def _slides_in_order(archive):
     return parts
 
 
-def _branch_powerpoint_uses(alternate, requires):
-    """The first mc:Choice whose required namespaces PowerPoint understands, else the mc:Fallback, else None."""
-    for branch in alternate:
-        if branch.tag == MC_FALLBACK:
-            return branch
-        namespaces = requires.get(branch)  # None unless the branch is an mc:Choice
-        if namespaces and all(namespace and namespace.startswith(POWERPOINT_NAMESPACES) for namespace in namespaces):
-            return branch
-    return None
+def _placeholders(element, alternate=False):
+    """Placeholder shapes in document order, each with whether it is in an mc:AlternateContent.
 
-
-def _placeholders(element, requires):
-    """Placeholder shapes in document order, taking from each mc:AlternateContent only the branch PowerPoint uses."""
+    Every mc:Choice and the mc:Fallback are included: which one PowerPoint draws depends on the extensions
+    its version knows, so none of them can be left out as the one it never uses.
+    """
     for child in element:
-        if child.tag == MC_ALTERNATE_CONTENT:
-            branch = _branch_powerpoint_uses(child, requires)
-            if branch is not None:
-                yield from _placeholders(branch, requires)
-        elif child.tag in PLACEHOLDER_SHAPES and child.find(f"*/{{{P_NS}}}nvPr/{{{P_NS}}}ph") is not None:
-            yield child
+        if child.tag in PLACEHOLDER_SHAPES and child.find(f"*/{{{P_NS}}}nvPr/{{{P_NS}}}ph") is not None:
+            yield child, alternate
         else:
-            yield from _placeholders(child, requires)
+            yield from _placeholders(child, alternate or child.tag == MC_ALTERNATE_CONTENT)
 
 
 def _geometry_faults(xfrm):
@@ -254,15 +211,16 @@ def _geometry_faults(xfrm):
 def placeholder_geometry_problems(pptx):
     """One line per placeholder whose own <a:xfrm> leaves out part of its position or size, or makes it zero.
 
-    Each line names the slide (1-based, in deck order), the shape and its placeholder idx; see
-    PLACEHOLDER_GEOMETRY_ADVICE for what PowerPoint does with them and the fix. A placeholder without an
+    Each line names the slide (1-based, in deck order), the shape and its placeholder idx, and says when the
+    shape is in an mc:AlternateContent, whose branches are all checked and listed once per distinct problem;
+    see PLACEHOLDER_GEOMETRY_ADVICE for what PowerPoint does with them and the fix. A placeholder without an
     <a:xfrm> of its own takes its layout's position and size, and is fine. Unreadable decks raise ValueError.
     """
     problems = []
     try:
         with zipfile.ZipFile(pptx) as archive:
             for number, part in enumerate(_slides_in_order(archive), 1):
-                for shape in _placeholders(*_slide_xml(archive, part)):
+                for shape, alternate in _placeholders(_part_xml(archive, part)):
                     xfrm = shape.find(f"{{{P_NS}}}spPr/{{{A_NS}}}xfrm")
                     if xfrm is None:
                         xfrm = shape.find(f"{{{P_NS}}}xfrm")  # a graphic frame's own transform
@@ -271,8 +229,10 @@ def placeholder_geometry_problems(pptx):
                         properties = shape.find(f"*/{{{P_NS}}}cNvPr")
                         name = " ".join(((properties.get("name") if properties is not None else None) or "").split())
                         idx = shape.find(f"*/{{{P_NS}}}nvPr/{{{P_NS}}}ph").get("idx", "0")
-                        problems.append(f'Slide {number}, placeholder "{name[:80]}" (idx {idx[:10]}): '
-                                        f'{", ".join(faults)}.')
+                        where = " in mc:AlternateContent" if alternate else ""
+                        line = f'Slide {number}, placeholder "{name[:80]}" (idx {idx[:10]}){where}: {", ".join(faults)}.'
+                        if not alternate or line not in problems:  # the same shape is usually copied into each branch
+                            problems.append(line)
     except (OSError, KeyError, zipfile.BadZipFile, ET.ParseError) as error:
         raise ValueError(f"Could not read the deck's slides to check their placeholders: {error}") from None
     return problems
