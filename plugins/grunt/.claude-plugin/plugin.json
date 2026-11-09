@@ -1,7 +1,7 @@
 {
   "name": "grunt",
-  "version": "0.3.6",
-  "description": "Grunt charts and tables: the Grunt MCP server plus skills for charts and tables inside PowerPoint (grunt-powerpoint), in .pptx files built outside PowerPoint (grunt-pptx) and in interactive HTML reports (grunt-html).",
+  "version": "0.3.7",
+  "description": "Grunt charts and tables: the Grunt MCP server plus skills for charts and tables inside PowerPoint (grunt-powerpoint), in .pptx files built outside PowerPoint (grunt-pptx), in interactive HTML reports (grunt-html) and in Claude Slides decks (grunt-slides).",
   "author": {
     "name": "Grunt"
   },
