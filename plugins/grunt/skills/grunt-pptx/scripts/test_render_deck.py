@@ -1,4 +1,5 @@
 """render_deck.py with PowerPoint and LibreOffice stood in for: hand-off, fallback and failures."""
+import io
 import subprocess
 import sys
 import tempfile
@@ -8,6 +9,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pypdfium2
+from pptx import Presentation
+from pptx.util import Inches
 
 import render_deck
 
@@ -52,9 +55,9 @@ class Programs:
 
 
 class RenderDeckTests(unittest.TestCase):
-    def render(self, tmp, programs, platform="win32", **options):
+    def render(self, tmp, programs, platform="win32", deck=b"", **options):
         pptx = Path(tmp) / "deck.pptx"
-        pptx.write_bytes(b"")
+        pptx.write_bytes(deck)
         with ExitStack() as stack:
             stack.enter_context(patch.object(render_deck.subprocess, "run", side_effect=programs))
             stack.enter_context(patch.object(render_deck.sys, "platform", platform))
@@ -129,6 +132,28 @@ class RenderDeckTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp, patch.object(render_deck, "find_soffice", return_value=None), \
                 self.assertRaisesRegex(RuntimeError, "could not be started.*LibreOffice was not found"):
             self.render(tmp, Programs(powerpoint=render_deck.POWERPOINT_UNAVAILABLE))
+
+    def test_placeholders_powerpoint_draws_elsewhere_are_listed_with_any_renderer(self):
+        def deck(width=None):
+            presentation = Presentation()
+            title = presentation.slides.add_slide(presentation.slide_layouts[5]).shapes.title
+            title.text = "Quarterly revenue by region"
+            if width:
+                title.width = width  # python-pptx writes a width and no position
+            saved = io.BytesIO()
+            presentation.save(saved)
+            return saved.getvalue()
+
+        for renderer in ("powerpoint", "libreoffice"):
+            with self.subTest(renderer=renderer), tempfile.TemporaryDirectory() as tmp:
+                result = self.render(tmp, Programs(pages=1), renderer=renderer, deck=deck(Inches(9)))
+                self.assertEqual(result["placeholder_problems"],
+                                 ['Slide 1, placeholder "Title 1" (idx 0): no position, height 0.'])
+                self.assertIn("top-left corner", result["warning"])
+        with tempfile.TemporaryDirectory() as tmp:
+            result = self.render(tmp, Programs(pages=1), renderer="libreoffice", deck=deck())
+            self.assertNotIn("placeholder_problems", result)
+            self.assertNotIn("warning", result)
 
 
 if __name__ == "__main__":

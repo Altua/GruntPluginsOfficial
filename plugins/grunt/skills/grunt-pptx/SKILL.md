@@ -153,6 +153,15 @@ Do not add LibreOffice's program folder to `PATH`, because it has its own
    there, such as `GRUNT-PAGE`. PowerPoint will not open a deck where two slides
    share a tags part, its Repair does not fix it, and a LibreOffice render does
    not catch it.
+
+   Leave each placeholder's position and size to its layout. Pick the layout
+   whose placeholders fit the content, and shorten a title that is too long for
+   its placeholder rather than widen the placeholder. To move or resize a
+   placeholder anyway, set its left, top, width and height together. python-pptx
+   writes only the ones you set (`title.width = ...` alone, or a rotation), and
+   PowerPoint then draws the placeholder at the slide's top-left corner or with
+   no size, while LibreOffice and python-pptx still show it where the layout
+   puts it. `insert_chart.py` stops on such placeholders and names each one.
 6. **Insert all assets in one operation.** Write a placements manifest; paths are
    relative to the manifest and slides are zero-based. The rectangle comes from
    the download, so entries take no position or size:
@@ -203,7 +212,9 @@ Do not add LibreOffice's program folder to `PATH`, because it has its own
    `render_deck.py` reports its `renderer`. If PowerPoint opens the deck but
    cannot render it, the helper stops rather than fall back: the recipient's
    PowerPoint would fail too, so fix the deck. `--renderer libreoffice` skips
-   PowerPoint.
+   PowerPoint. When it lists `placeholder_problems`, PowerPoint will not draw
+   those placeholders where their layout puts them: fix each one as step 5
+   says, even when the render looks right, and render again.
 
    Build and check one chart slide and one table slide before scaling up a large
    deck. Tell the user which renderer you used (LibreOffice results do not prove

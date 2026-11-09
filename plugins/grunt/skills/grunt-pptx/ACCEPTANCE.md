@@ -5,6 +5,9 @@
 - Inspect every saved slide in the intended renderer at presentation size: text,
   headers, labels, clipping, aspect ratio, placement and margins. Record the
   renderer used. PNG fallback previews alone do not prove SVG compatibility.
+- Fix every placeholder `render_deck.py` lists under `placeholder_problems`.
+  PowerPoint draws them away from their layout, and a LibreOffice render does
+  not show it.
 - Check requested formatting and font substitutions. Verify number formats and
   label visibility after a follow-up edit as well as initial creation.
 - Record which assets are native and which use the SVG fallback (and its pinned/latest
