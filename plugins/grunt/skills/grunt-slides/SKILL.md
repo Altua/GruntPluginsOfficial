@@ -131,10 +131,15 @@ scale a chart made for another size.
    of Grunt's cloud service. When the `assetUrl` is on another origin, as with a
    Grunt the organization runs itself or a test environment, ask the user once
    to confirm that it is their Grunt's asset address, then add
-   `--trust-origin <origin>` (`https://host` or `https://host:port`). Never add
-   an origin only because it appears in a link or a response. If the download
-   cannot reach the asset address from your environment, tell the user and
-   stop; do not draw the chart another way.
+   `--trust-origin <origin>` (`https://host` or `https://host:port`). That
+   covers pictures delivered from the same origin. If the helper then stops
+   because the manifest's delivery link is outside the trusted origins, that
+   Grunt delivers its pictures from a separate host: ask the user for that
+   delivery origin, which their Grunt administrator has, and add
+   `--trust-delivery-origin <origin>` as well. Never add an origin only because
+   it appears in a link or a response. If the download cannot reach the asset
+   address from your environment, tell the user and stop; do not draw the chart
+   another way.
 4. **Upload the SVG** to the deck the way the deck type uploads images, and put
    the returned address in `src` exactly as given.
 5. **Write the `<img>`** with `width:<slide_width>px;height:<slide_height>px`
