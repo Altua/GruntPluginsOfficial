@@ -11,9 +11,9 @@ names Grunt. Make a native PowerPoint chart only when the user asks for one.
 Grunt's tools may carry a host prefix and load on demand: search for
 `deck_get_context` and the `create_or_update_*` tool you need before deciding
 they are missing. If they are not in this session, tell the user and ask before
-making a native chart. If two Grunt servers offer them (the organization's Grunt
-connector and the plugin's own), use the one that works for the whole task, and
-do not ask the user to sign in to the other.
+making a native chart. If more than one Grunt connector offers them (for example
+Grunt's cloud service and a Grunt the organization runs itself), use the one
+that works for the whole task, and do not ask the user to sign in to another.
 
 1. **Find the deck.** Call `deck_get_context` first. It lists every presentation
    open in the user's PowerPoint, including ones your own PowerPoint tools cannot

@@ -1,7 +1,7 @@
 {
   "name": "grunt",
-  "version": "0.3.7",
-  "description": "Grunt charts and tables: the Grunt MCP server plus skills for charts and tables inside PowerPoint (grunt-powerpoint), in .pptx files built outside PowerPoint (grunt-pptx), in interactive HTML reports (grunt-html) and in Claude Slides decks (grunt-slides).",
+  "version": "0.3.8",
+  "description": "Grunt charts and tables: skills for charts and tables inside PowerPoint (grunt-powerpoint), in .pptx files built outside PowerPoint (grunt-pptx), in interactive HTML reports (grunt-html) and in Claude Slides decks (grunt-slides). Works through the Grunt connector your organization has connected.",
   "author": {
     "name": "Grunt"
   },
@@ -9,11 +9,10 @@
   "repository": "https://github.com/Altua/GruntPluginsOfficial",
   "keywords": ["grunt", "charts", "tables", "powerpoint", "pptx", "html", "reports", "mcp"],
   "skills": "./skills",
-  "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "Grunt",
     "shortDescription": "Grunt charts in HTML reports and PowerPoint decks",
-    "longDescription": "Create Grunt charts and tables with the Grunt MCP server, then place them on slides inside PowerPoint (grunt-powerpoint), in .pptx files built outside PowerPoint (grunt-pptx), in interactive, self-contained HTML reports (grunt-html) or in Claude Slides decks (grunt-slides). Sign in with your own Grunt account.",
+    "longDescription": "Create Grunt charts and tables through the Grunt connector your organization has connected, then place them on slides inside PowerPoint (grunt-powerpoint), in .pptx files built outside PowerPoint (grunt-pptx), in interactive, self-contained HTML reports (grunt-html) or in Claude Slides decks (grunt-slides). Sign in with your own Grunt account.",
     "developerName": "Grunt",
     "category": "Productivity",
     "capabilities": ["Read", "Write", "Interactive"],

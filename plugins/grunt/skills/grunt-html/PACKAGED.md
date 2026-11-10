@@ -19,12 +19,14 @@ output in the user's directory, never in the installed plugin or its cache.
 
 ## Grunt connection
 
-Installing the plugin adds the **Grunt** MCP server (`https://mcp.grunt.io/mcp`).
-Each user signs in with their own Grunt account; no credentials or capability
-links are bundled. SKILL.md starts by checking the connection, and
-[CONNECT.md](CONNECT.md) lists sign-in steps for common apps.
+The plugin brings no Grunt server. The skill works through the Grunt connector
+that is connected in the user's app, normally the organization's, which can be
+Grunt's cloud service or a Grunt the organization runs itself. Each user signs
+in with their own Grunt account; no credentials or capability links are bundled.
+SKILL.md starts by checking the connection, and [CONNECT.md](CONNECT.md) lists
+the steps to connect in common apps.
 
-Production origins for the report `config`:
+Origins of Grunt's cloud service for the report `config`:
 
 ```json
 {
@@ -34,7 +36,11 @@ Production origins for the report `config`:
 }
 ```
 
-Use other origins only when the deployment owner provides them; never infer a
-trusted origin from a response. Existing reports keep their inlined runtime.
+A Grunt the organization runs itself, or a test environment, has its own
+origins. The `assetUrl` that `create_asset_link` returns shows which asset origin
+is in use: when it is not the cloud service's, ask the user to confirm it and to
+give the delivery and editor origins, which their Grunt administrator has. Use
+other origins only when the user or the deployment owner provides them; never
+infer a trusted origin from a response. Existing reports keep their inlined runtime.
 Reassemble from retained source to adopt a newer version; do not paste a new
 script into an existing managed report.
