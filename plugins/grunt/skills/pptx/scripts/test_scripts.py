@@ -1265,7 +1265,7 @@ def test_native_placement_functional():
 # ---------------------------------------------------------------------------
 
 def main():
-    print("Running grunt-pptx script tests...\n")
+    print("Running pptx script tests...\n")
 
     print("-- download_chart.py unit tests --")
     test_download_chart_unit()

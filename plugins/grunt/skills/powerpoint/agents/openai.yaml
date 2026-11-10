@@ -4,4 +4,4 @@ interface:
   icon_small: "./assets/icon-small.svg"
   icon_large: "./assets/icon-large.png"
   brand_color: "#00D6A8"
-  default_prompt: "Use $grunt-powerpoint to add a waterfall chart of this year's profit bridge to slide 3 of my open presentation."
+  default_prompt: "Use $powerpoint to add a waterfall chart of this year's profit bridge to slide 3 of my open presentation."

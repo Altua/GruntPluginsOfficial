@@ -1,6 +1,6 @@
 ---
-name: grunt-powerpoint
-description: Use when working in PowerPoint with the Grunt connector (Claude for PowerPoint, or any host with Grunt's deck_* tools). Grunt charts and tables are the default for every chart or table the user asks for, any type including waterfall, whether or not they name Grunt. Also use it to change, move, resize, recolour or delete Grunt objects (shapes whose names start with "Grunt chart" or "Grunt object"), and for changes in another open presentation, which Grunt reaches even when this pane is not attached to it. Not for building .pptx files outside PowerPoint (that is grunt-pptx).
+name: powerpoint
+description: Use when working in PowerPoint with the Grunt connector (Claude for PowerPoint, or any host with Grunt's deck_* tools). Grunt charts and tables are the default for every chart or table the user asks for, any type including waterfall, whether or not they name Grunt. Also use it to change, move, resize, recolour or delete Grunt objects (shapes whose names start with "Grunt chart" or "Grunt object"), and for changes in another open presentation, which Grunt reaches even when this pane is not attached to it. Not for building .pptx files outside PowerPoint (that is the pptx skill).
 ---
 
 # Grunt charts and tables in PowerPoint

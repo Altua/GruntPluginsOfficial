@@ -4,4 +4,4 @@ interface:
   icon_small: "./assets/icon-small.svg"
   icon_large: "./assets/icon-large.png"
   brand_color: "#00D6A8"
-  default_prompt: "Use $grunt-html to build an HTML report with a Grunt line chart of monthly customers and a KPI table."
+  default_prompt: "Use $html to build an HTML report with a Grunt line chart of monthly customers and a KPI table."

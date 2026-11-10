@@ -1,4 +1,4 @@
-"""Run with python -m unittest discover -s skills/grunt-pptx/scripts -p test_pptx_quality.py."""
+"""Run with python -m unittest discover -s skills/pptx/scripts -p test_pptx_quality.py."""
 import copy
 import json
 import tempfile

@@ -3,7 +3,7 @@
 Claude Slides deck.
 
 Read the source URL from stdin or --url-file; never put links in argv. The download itself is
-grunt-pptx's download_chart.py (HTTPS only, allowlisted origins, no redirects, size and identity
+the pptx skill's download_chart.py (HTTPS only, allowlisted origins, no redirects, size and identity
 checks), which must sit next to this skill in the same plugin.
 
 Slides stores an uploaded SVG without its <style> blocks, comments and embedded images, and
@@ -25,7 +25,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-DOWNLOADER_DIR = HERE.parent.parent / "grunt-pptx" / "scripts"
+DOWNLOADER_DIR = HERE.parent.parent / "pptx" / "scripts"
 
 SVG_NS = "http://www.w3.org/2000/svg"
 XLINK_NS = "http://www.w3.org/1999/xlink"
@@ -191,7 +191,7 @@ def slide_pixels(points):
 
 def load_downloader():
     if not (DOWNLOADER_DIR / "download_chart.py").is_file():
-        print(json.dumps({"error": "grunt-pptx's scripts/download_chart.py was not found next to this skill. "
+        print(json.dumps({"error": "The pptx skill's scripts/download_chart.py was not found next to this skill. "
                                    "Install the whole Grunt plugin."}))
         sys.exit(1)
     sys.path.insert(0, str(DOWNLOADER_DIR))

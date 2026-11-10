@@ -1,5 +1,5 @@
 ---
-name: grunt-html
+name: html
 description: Build self-contained, interactive HTML reports from Grunt charts and tables, using the Grunt MCP server, exact-size SVG snapshots, hover/keyboard value inspection, one-click chart updates and durable HTML saves. Use for HTML reports, dashboards and offline report files with Grunt assets. Requires a signed-in Grunt MCP connection, which the skill checks first.
 ---
 
@@ -115,7 +115,7 @@ separate asset with fewer labels or another orientation for the narrow layout.
 
 Verify a representative wide and narrow render at their intended display sizes
 before rendering the complete set. PowerPoint follows the same principle using its
-final slide rectangle (see the `grunt-pptx` skill).
+final slide rectangle (see the `pptx` skill).
 
 For stacked bar and column charts, explicitly set `settings.seriesLabels.visible`
 to `false` when showing a value axis or a legend. Series-name labels default to

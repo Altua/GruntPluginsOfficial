@@ -4,4 +4,4 @@ interface:
   icon_small: "./assets/icon-small.svg"
   icon_large: "./assets/icon-large.png"
   brand_color: "#00D6A8"
-  default_prompt: "Use $grunt-pptx to create a Grunt bar chart of quarterly revenue by region and put it on slide 2 of deck.pptx."
+  default_prompt: "Use $pptx to create a Grunt bar chart of quarterly revenue by region and put it on slide 2 of deck.pptx."
