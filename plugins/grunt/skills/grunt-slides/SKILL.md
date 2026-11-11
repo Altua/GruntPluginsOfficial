@@ -19,22 +19,25 @@ plugin must be installed.
 
 ## Before you start: check the Grunt connection
 
-Do this before planning, installing anything or writing files. The Grunt MCP
-server is `https://mcp.grunt.io/mcp`, and each user signs in with their own Grunt
-account.
+Do this before planning, installing anything or writing files. The plugin brings
+no Grunt server of its own: the skill works through the Grunt connector that is
+connected in this session, normally the organization's connector, called just
+"Grunt". It can be Grunt's cloud service or a Grunt the organization runs itself,
+and each user signs in with their own Grunt account. Work with the Grunt that is
+connected. Never add, suggest or switch to another server address on your own.
 
 1. **Find the Grunt tools.** Look for tools whose names are, or end with,
    `create_or_update_bar_chart`, `create_asset_link` and `get_rendering_fonts`.
-   Apps add their own prefixes to MCP tool names, so match the end of the name,
-   not the server's name. If your app loads tools on demand or lets you search
-   for tools, search for `create_asset_link` before deciding the tools are
-   missing.
+   Apps add their own prefixes to MCP tool names, and a connector can have
+   another name than "Grunt", so match the end of the name, not the server's
+   name. If your app loads tools on demand or lets you search for tools, search
+   for `create_asset_link` before deciding the tools are missing.
 2. **Confirm the sign-in.** Call `get_rendering_fonts` once with no arguments. It
    only reads; it creates and changes nothing.
    - A list of font names: you are connected. Keep the list for choosing fonts.
    - An authentication error (for example 401, 403, "unauthorized", "sign in" or
-     an expired token): you are not signed in to that server. If step 1 found
-     another Grunt server, check it the same way; if none is signed in, go to
+     an expired token): you are not signed in to that connector. If step 1 found
+     another Grunt connector, check it the same way; if none is signed in, go to
      step 3.
    - Any other error: try once more. If it fails again, tell the user that Grunt
      is not responding, quote the error, and stop.
@@ -42,10 +45,12 @@ account.
    charts another way, write placeholder images, install dependencies or go on
    to later steps. Tell the user:
    - Grunt isn't connected in this session.
-   - To connect, they add or turn on the Grunt MCP server
-     (`https://mcp.grunt.io/mcp`) in their app's MCP or connector settings and
-     sign in with their Grunt account. If you know the exact steps for the app
-     you are running in, give them; [CONNECT.md](CONNECT.md) lists some.
+   - To connect, they turn on their organization's Grunt connector in their
+     app's connector or MCP settings and sign in with their Grunt account. If
+     their organization has no Grunt connector yet, an administrator adds one
+     with the address of the Grunt the organization uses. If you know the exact
+     steps for the app you are running in, give them; [CONNECT.md](CONNECT.md)
+     lists some.
    - They should tell you when they are done.
 
    You cannot complete the sign-in yourself. Never ask the user for a password,
@@ -54,11 +59,17 @@ account.
    still don't appear, tell the user that the app may need to reload its MCP
    servers (a new session or an app restart), and stop. Do not keep checking.
 
-An app can list more than one Grunt server, for example the organization's Grunt
-connector and the server the Grunt plugin adds. Use one that is signed in, and
-do not ask the user to sign in to another while one works. Then use only that
-server for the whole deliverable, so every asset is created, linked and updated
-under the same account. [CONNECT.md](CONNECT.md) says which to use in each app.
+An app can list more than one Grunt connector, for example one for Grunt's cloud
+service and one for a Grunt the organization runs itself or a test environment.
+Each is a separate Grunt with its own assets. Use the one the user names. If
+they name none, use the one that is signed in; if several are signed in, use the
+one called just "Grunt", and if that does not settle it, ask. Do not ask the
+user to sign in to another while one works. Then use only that connector for the
+whole deliverable, so every asset is created, linked and updated in the same
+Grunt, and tell the user which one you used when there was a choice. Asset links
+come from that Grunt's own asset address, which is not always the cloud
+service's; the steps below say when to ask the user about it.
+[CONNECT.md](CONNECT.md) lists the steps to connect in each app.
 
 ## How a Grunt chart sits on a slide
 
@@ -114,9 +125,21 @@ scale a chart made for another size.
    labels would otherwise shrink to a few pixels. It removes the link Grunt
    embeds in the SVG. It prints `asset_id`, `asset_commit`, `alt_marker`,
    `slide_width`, `slide_height`, `font_families` and `warnings`. Tell the user
-   about any warning, such as a logo that Slides will drop. If the download
-   cannot reach `assets.grunt.io` from your environment, tell the user and stop;
-   do not draw the chart another way.
+   about any warning, such as a logo that Slides will drop.
+
+   The helper trusts asset links on `https://assets.grunt.io`, the asset address
+   of Grunt's cloud service. When the `assetUrl` is on another origin, as with a
+   Grunt the organization runs itself or a test environment, ask the user once
+   to confirm that it is their Grunt's asset address, then add
+   `--trust-origin <origin>` (`https://host` or `https://host:port`). That
+   covers pictures delivered from the same origin. If the helper then stops
+   because the manifest's delivery link is outside the trusted origins, that
+   Grunt delivers its pictures from a separate host: ask the user for that
+   delivery origin, which their Grunt administrator has, and add
+   `--trust-delivery-origin <origin>` as well. Never add an origin only because
+   it appears in a link or a response. If the download cannot reach the asset
+   address from your environment, tell the user and stop; do not draw the chart
+   another way.
 4. **Upload the SVG** to the deck the way the deck type uploads images, and put
    the returned address in `src` exactly as given.
 5. **Write the `<img>`** with `width:<slide_width>px;height:<slide_height>px`

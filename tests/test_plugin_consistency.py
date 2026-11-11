@@ -49,8 +49,14 @@ class ManifestTests(unittest.TestCase):
     def test_codex_manifest_paths_exist(self):
         codex = read_json(PLUGIN / ".codex-plugin" / "plugin.json")
         self.assertTrue((PLUGIN / codex["skills"]).is_dir())
-        mcp = read_json(PLUGIN / codex["mcpServers"])
-        self.assertIn("Grunt", mcp["mcpServers"])
+
+    def test_plugin_bundles_no_mcp_server(self):
+        # The skills use the Grunt connector the user's organization has
+        # connected, which can be its own installation. A bundled server for one
+        # fixed address would also take the place of that connector in Claude Code.
+        self.assertFalse((PLUGIN / ".mcp.json").exists())
+        for manifest in (".claude-plugin", ".codex-plugin"):
+            self.assertNotIn("mcpServers", read_json(PLUGIN / manifest / "plugin.json"), manifest)
 
     def test_icon_paths_exist(self):
         # The directory shows these icons; a release without the files loses them.
@@ -118,6 +124,15 @@ class SkillTests(unittest.TestCase):
                 text = doc.read_text(encoding="utf-8")
                 for phrase in HOST_SPECIFIC:
                     self.assertNotIn(phrase, text, f"{skill.name}/{doc.name}")
+
+    def test_only_connect_md_names_the_cloud_address(self):
+        # The skills work with whichever Grunt is connected. CONNECT.md gives the
+        # cloud service's address as one of the choices; nothing else names it.
+        for skill in SKILLS:
+            for doc in skill.glob("*.md"):
+                if doc.name == "CONNECT.md":
+                    continue
+                self.assertNotIn("mcp.grunt.io", doc.read_text(encoding="utf-8"), f"{skill.name}/{doc.name}")
 
 
 if __name__ == "__main__":

@@ -6,7 +6,7 @@ any agent that reads `SKILL.md` folders and can call MCP tools.
 
 | Plugin | What you get |
 | --- | --- |
-| [`grunt`](plugins/grunt) | The **Grunt** MCP server (charts, tables and visual grids) plus four skills: **grunt-powerpoint** makes and changes Grunt charts and tables inside PowerPoint, **grunt-pptx** builds .pptx files with Grunt objects outside PowerPoint, **grunt-html** builds interactive, self-contained HTML reports, **grunt-slides** puts them into Claude Slides decks and changes them in place. |
+| [`grunt`](plugins/grunt) | Four skills that work through the Grunt connector your organization has connected (charts, tables and visual grids): **grunt-powerpoint** makes and changes Grunt charts and tables inside PowerPoint, **grunt-pptx** builds .pptx files with Grunt objects outside PowerPoint, **grunt-html** builds interactive, self-contained HTML reports, **grunt-slides** puts them into Claude Slides decks and changes them in place. |
 
 ## Install
 
@@ -41,24 +41,36 @@ codex plugin add grunt@grunt-plugins
 
 ### Other agents
 
-Add the Grunt MCP server (`https://mcp.grunt.io/mcp`, streamable HTTP) in the
-agent's MCP settings, and copy the folders in
-[`plugins/grunt/skills`](plugins/grunt/skills) to wherever the agent loads skills
-from. Keep each skill folder whole; the scripts and runtimes are part of it.
+Copy the folders in [`plugins/grunt/skills`](plugins/grunt/skills) to wherever
+the agent loads skills from, and connect Grunt as described below. Keep each
+skill folder whole; the scripts and runtimes are part of it.
 
-## Connect your Grunt account
+## Connect Grunt
 
-Each user signs in to the Grunt MCP server with their own Grunt account:
+The plugin brings no Grunt server of its own. The skills work through the Grunt
+connector that is connected in your app, normally your organization's connector,
+called just "Grunt". It can point at Grunt's cloud service
+(`https://mcp.grunt.io/mcp`, streamable HTTP) or at a Grunt your organization
+runs itself, and the skills use whichever it is. Each user signs in with their
+own Grunt account. Below, `<address>` is the address of the Grunt your
+organization uses.
 
-- **Claude Code:** run `/mcp`, select **plugin:grunt:Grunt** and complete the
-  sign-in in your browser.
-- **Codex CLI:** run `codex mcp list` to find the Grunt server's name, then
-  `codex mcp login <name>`.
-- **Claude Desktop, claude.ai, Cowork and Claude for PowerPoint:** connect your
-  organization's Grunt connector in **Customize > Connectors**, and turn it on
-  in a chat under **+** > **Connectors**. The plugin's own Grunt server can show
-  up there too and ask you to sign in; you don't need it.
-- **Other agents:** sign in from the agent's MCP or connector settings.
+- **Claude Code, Claude Desktop, claude.ai, Cowork and Claude for PowerPoint:**
+  connect your organization's Grunt connector in **Customize > Connectors**. In
+  a chat, turn it on under **+** > **Connectors**; in Claude Code, run `/mcp` in
+  a new session to check that it is listed. If your organization has set up
+  managed authorization for the connector, it connects without a sign-in page.
+- **Claude Code without an account connector:** add the server yourself with
+  `claude mcp add --transport http grunt <address>`, then run `/mcp`, select it
+  and complete the sign-in in your browser.
+- **Codex CLI:** add the server with `codex mcp add grunt --url <address>`, then
+  run `codex mcp login grunt`.
+- **Other agents:** add `<address>` in the agent's MCP or connector settings and
+  sign in there.
+
+Versions before 0.3.8 added their own server for Grunt's cloud service
+(**plugin:grunt:Grunt** in Claude Code). Updating the plugin removes it; connect
+Grunt as above if you signed in to that server only.
 
 Some apps show the new tools only in a new session or after a restart.
 **grunt-pptx**, **grunt-html** and **grunt-slides** check the connection before they start and tell
@@ -87,7 +99,7 @@ Requirements on your machine:
   pypdfium2; about 40 MB) into a virtual environment. Decks are rendered for
   checking with PowerPoint on Windows, or else with LibreOffice.
 - **grunt-html:** Node.js 22.22+. No `npm install` needed.
-- **grunt-slides:** Python 3.10+ with network access to `assets.grunt.io`. It uses grunt-pptx's downloader, so install the whole plugin.
+- **grunt-slides:** Python 3.10+ with network access to your Grunt's asset address (`assets.grunt.io` for the cloud service). It uses grunt-pptx's downloader, so install the whole plugin.
 
 ## Share with a team (Claude Code)
 
@@ -123,6 +135,10 @@ marketplace and plugin when they trust the folder:
 - Each plugin has a Claude Code manifest (`.claude-plugin/plugin.json`) and a
   Codex manifest (`.codex-plugin/plugin.json`). Bump `version` in both for every
   release; users on a pinned version receive changes only when it changes.
+- The plugin bundles no MCP server: no `.mcp.json`, and no `mcpServers` in either
+  manifest. The skills work with whichever Grunt connector the user has, which
+  can be an installation their organization runs itself, so keep fixed server
+  addresses out of them. Only `CONNECT.md` names the cloud service's address.
 - Write skills for any agent: refer to the skill's folder as `<skill-dir>`
   rather than a host variable, and describe tools by what they do rather than by
   one host's tool names. The connection check and `CONNECT.md` are shared by
