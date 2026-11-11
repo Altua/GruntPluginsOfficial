@@ -140,8 +140,11 @@ Do not add LibreOffice's program folder to `PATH`, because it has its own
    Grunt the organization runs itself or a test environment, ask the user once
    to confirm that it is their Grunt's asset address. Then add
    `--trust-origin <origin>` (`https://host` or `https://host:port`), here and
-   in step 6. Never add an origin only because it appears in a link or a
-   response.
+   in step 6. If the download then stops because the manifest's delivery link
+   is outside the trusted origins, that Grunt delivers from a separate host: ask
+   the user for that delivery origin, which their Grunt administrator has, and
+   add `--trust-delivery-origin <origin>` to the download as well. Never add an
+   origin only because it appears in a link or a response.
 
    The helper follows the manifest's `links.pptx.href` unchanged, checks HTTPS,
    response types, redirects, size and identity, deletes the URL file after
