@@ -1,6 +1,6 @@
 # Paired HTML and PowerPoint reports
 
-Use the `grunt-html` skill for self-contained HTML and this skill for PowerPoint.
+Use the `html` skill for self-contained HTML and this skill for PowerPoint.
 Both come from the same plugin and use the same Grunt assets. Older generated
 reports keep their old inlined runtime; updating the plugin does not upgrade them.
 

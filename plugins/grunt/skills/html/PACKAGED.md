@@ -1,4 +1,4 @@
-# Packaged grunt-html workflow
+# Packaged workflow of the html skill
 
 The skill includes its matching browser runtimes (`dist/`) and a bundled CLI
 (`scripts/report.mjs`). Use Node 22.22 or newer; no checkout or `npm install` is

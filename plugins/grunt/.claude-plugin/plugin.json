@@ -1,7 +1,7 @@
 {
   "name": "grunt",
-  "version": "0.3.8",
-  "description": "Grunt charts and tables: skills for charts and tables inside PowerPoint (grunt-powerpoint), in .pptx files built outside PowerPoint (grunt-pptx), in interactive HTML reports (grunt-html) and in Claude Slides decks (grunt-slides). Works through the Grunt connector your organization has connected.",
+  "version": "0.3.9",
+  "description": "Grunt charts and tables: skills for charts and tables inside PowerPoint (powerpoint), in .pptx files built outside PowerPoint (pptx), in interactive HTML reports (html) and in Claude Slides decks (slides). Works through the Grunt connector your organization has connected.",
   "author": {
     "name": "Grunt"
   },

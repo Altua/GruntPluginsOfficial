@@ -1,5 +1,5 @@
 """Tests for slides_svg.py's offline conversion. Run from the repository root:
-    python -m unittest discover -s plugins/grunt/skills/grunt-slides/scripts -p "test_*.py"
+    python -m unittest discover -s plugins/grunt/skills/slides/scripts -p "test_*.py"
 """
 
 import sys

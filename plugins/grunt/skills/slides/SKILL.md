@@ -1,5 +1,5 @@
 ---
-name: grunt-slides
+name: slides
 description: Put Grunt charts and tables into Claude Slides decks (the claude.ai Slides artifact) and change them in place, using the Grunt MCP server. Use when a Slides deck needs a chart or table, or when the user selects a Grunt chart on a slide and asks for a change. Each chart is an uploaded picture whose alt text names its Grunt asset and version, so the PowerPoint download can become editable Grunt objects again in the Grunt add-in. Requires a signed-in Grunt MCP connection, which the skill checks first.
 ---
 
@@ -14,7 +14,7 @@ at, and what the PowerPoint download does with it.
 
 In the commands below, `<skill-dir>` stands for the absolute path of the folder
 that contains this SKILL.md; replace it yourself, because it is not an
-environment variable. The helper uses grunt-pptx's downloader, so the whole Grunt
+environment variable. The helper uses the pptx skill's downloader, so the whole Grunt
 plugin must be installed.
 
 ## Before you start: check the Grunt connection
@@ -119,7 +119,7 @@ scale a chart made for another size.
    python "<skill-dir>/scripts/slides_svg.py" --url-file private/revenue.url --output slides-assets/revenue.svg
    ```
 
-   The helper downloads through the asset manifest with grunt-pptx's checked
+   The helper downloads through the asset manifest with the pptx skill's checked
    downloader and deletes the URL file. It moves Grunt's text styles into each
    label, because Slides strips `<style>` blocks from uploaded SVGs and the
    labels would otherwise shrink to a few pixels. It removes the link Grunt

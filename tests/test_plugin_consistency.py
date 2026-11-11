@@ -14,7 +14,7 @@ PLUGIN = ROOT / "plugins" / "grunt"
 SKILLS = sorted(p for p in (PLUGIN / "skills").iterdir() if p.is_dir())
 # Skills that run inside an Office app use the app's Grunt connector, so they
 # skip the sign-in check and CONNECT.md that the file-building skills share.
-IN_APP_SKILLS = {"grunt-powerpoint"}
+IN_APP_SKILLS = {"powerpoint"}
 FILE_SKILLS = [p for p in SKILLS if p.name not in IN_APP_SKILLS]
 CONNECTION_HEADING = "## Before you start: check the Grunt connection"
 
@@ -87,6 +87,12 @@ class SkillTests(unittest.TestCase):
             match = re.search(r"^name: (\S+)$", text, re.MULTILINE)
             self.assertIsNotNone(match, skill.name)
             self.assertEqual(match.group(1), skill.name)
+
+    def test_skill_names_do_not_repeat_the_plugin_name(self):
+        # The plugin's name namespaces its skills, so `pptx` lists as `grunt:pptx`.
+        plugin = read_json(PLUGIN / ".claude-plugin" / "plugin.json")["name"]
+        for skill in SKILLS:
+            self.assertFalse(skill.name.startswith(plugin + "-"), skill.name)
 
     def test_descriptions_are_plain_and_fit_the_skill_limit(self):
         # Agent Skills allow descriptions of at most 1024 characters. A plain

@@ -1,13 +1,13 @@
 ---
-name: grunt-pptx
-description: For agents that build PowerPoint (.pptx) files programmatically, outside PowerPoint. Inserts Grunt charts and tables into .pptx files as native Grunt objects, using the Grunt MCP server, permanent edit links, exact-placement downloads, batch slide assembly and rendered-deck checks. Not for use inside PowerPoint (Claude for PowerPoint, or any host with Grunt's deck_* tools), where grunt-powerpoint applies. Requires a signed-in Grunt MCP connection, which the skill checks first.
+name: pptx
+description: For agents that build PowerPoint (.pptx) files programmatically, outside PowerPoint. Inserts Grunt charts and tables into .pptx files as native Grunt objects, using the Grunt MCP server, permanent edit links, exact-placement downloads, batch slide assembly and rendered-deck checks. Not for use inside PowerPoint (Claude for PowerPoint, or any host with Grunt's deck_* tools), where the powerpoint skill applies. Requires a signed-in Grunt MCP connection, which the skill checks first.
 ---
 
 # Grunt charts and tables in .pptx files
 
 This skill is for agents that build .pptx files with code, outside PowerPoint.
 Inside PowerPoint (Claude for PowerPoint, or any host with Grunt's `deck_*` tools),
-use the `grunt-powerpoint` skill instead.
+use the `powerpoint` skill instead.
 
 Every Grunt chart or table in a deck is a vector SVG picture (with a PNG fallback)
 tagged with its Grunt asset ID, pinned commit and permanent edit link. By default
@@ -381,7 +381,7 @@ model data; download native placements again to rebuild native shapes. Grouped
 Grunt shapes must be ungrouped first. If asset-project tools are available, keep
 one project per deliverable and stamp its ID in the final file.
 
-For a paired HTML report, see [HTML.md](HTML.md) and the `grunt-html` skill.
+For a paired HTML report, see [HTML.md](HTML.md) and the `html` skill.
 
 ## Tests
 
