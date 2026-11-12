@@ -14,7 +14,10 @@ tagged with its Grunt asset ID, pinned commit and permanent edit link. By defaul
 each one also carries the Grunt add-in's own object tags, so the deck opens like
 one the add-in saved: nothing is downloaded on first open, so large decks do not
 freeze, the deck works offline, and every Grunt add-in user can edit the charts
-without the `FetchWebAssetsOnLoad` flag. When the server offers no native
+without the `FetchWebAssetsOnLoad` flag. When each download names the slide it
+goes on (workflow step 5) and the server supports it, the add-in redraws
+nothing either, so PowerPoint does not ask to save a deck that was only opened.
+When the server offers no native
 placement, use the [SVG fallback](#svg-fallback). Without the add-in every object
 is a static picture. Do not claim native editing unless you tested it in the add-in.
 
@@ -127,41 +130,9 @@ Do not add LibreOffice's program folder to `PATH`, because it has its own
    same deck; mint a new one for a different deck. Its `assetUrl` is the
    permanent JSON manifest source, pinned to the commit current when it was
    minted, so mint links after the asset is final.
-4. **Download each placement.** Append `&x=<px>&y=<px>&width=<px>&height=<px>`
-   to the `assetUrl` and write it to a private file with a file-writing tool, not
-   a shell command — never put the URL on a command line or in logs:
-
-   ```sh
-   python "<skill-dir>/scripts/download_chart.py" --format pptx --url-file private/revenue.url --output assets/revenue.pptx.json
-   ```
-
-   The helpers trust asset links on `https://assets.grunt.io`, the asset address
-   of Grunt's cloud service. When the `assetUrl` is on another origin, as with a
-   Grunt the organization runs itself or a test environment, ask the user once
-   to confirm that it is their Grunt's asset address. Then add
-   `--trust-origin <origin>` (`https://host` or `https://host:port`), here and
-   in step 6. If the download then stops because the manifest's delivery link
-   is outside the trusted origins, that Grunt delivers from a separate host: ask
-   the user for that delivery origin, which their Grunt administrator has, and
-   add `--trust-delivery-origin <origin>` to the download as well. Never add an
-   origin only because it appears in a link or a response.
-
-   The helper follows the manifest's `links.pptx.href` unchanged, checks HTTPS,
-   response types, redirects, size and identity, deletes the URL file after
-   reading it, and prints no tokens or chart data. It reports each object's type
-   and slide rectangle in inches and the SVG `font_families`; confirm both match
-   the plan. One asset can return several objects (for example a chart and its
-   legend); each becomes its own shape. Every placement of an asset, including a
-   repeat on another slide, needs its own download at its own position. Place an
-   asset at most once per slide, and an asset with several objects at most once
-   per deck, counting its other versions and duplicates: the add-in can bind a
-   repeated legend to another chart. For another copy, create a new asset (a
-   duplicate keeps the original's object keys). If the helper reports no
-   `links.pptx` (an older server), or the native download fails with any HTTP
-   error (a 404 for an asset too large for a native placement, another status
-   from an asset host that cannot place assets yet), use the
-   [SVG fallback](#svg-fallback) for that asset and tell the user.
-5. **Prepare the deck skeleton** (the user's template, or python-pptx). Leave the
+4. **Prepare the deck skeleton** (the user's template, or python-pptx), with
+   every slide a chart or table goes on, before you download: the download reads
+   each slide's theme font from it. Leave the
    chart rectangles empty. python-pptx cannot duplicate a slide, so build a new
    slide from its layout rather than copying an existing one. If you do copy a
    slide's XML, give the copy its own copy of every part it points to except the
@@ -179,6 +150,55 @@ Do not add LibreOffice's program folder to `PATH`, because it has its own
    PowerPoint then draws the placeholder at the slide's top-left corner or with
    no size, while LibreOffice and python-pptx still show it where the layout
    puts it. `insert_chart.py` stops on such placeholders and names each one.
+5. **Download each placement.** Append `&x=<px>&y=<px>&width=<px>&height=<px>`
+   to the `assetUrl` and write it to a private file with a file-writing tool, not
+   a shell command — never put the URL on a command line or in logs. Name the
+   deck skeleton and the zero-based slide the placement goes on:
+
+   ```sh
+   python "<skill-dir>/scripts/download_chart.py" --format pptx --url-file private/revenue.url --output assets/revenue.pptx.json --deck skeleton.pptx --slide 0
+   ```
+
+   With `--deck` and `--slide` the helper sends that slide's theme font (the
+   theme's heading font). The server lays out text that has no font of its own
+   in that font and stores it with the object, so the Grunt add-in draws the
+   same picture: it finds the picture up to date, and opening the deck changes
+   nothing. Without them such text is laid out in the server's stand-in font,
+   and the add-in redraws the object in another font when the deck is first
+   opened.
+
+   The helpers trust asset links on `https://assets.grunt.io`, the asset address
+   of Grunt's cloud service. When the `assetUrl` is on another origin, as with a
+   Grunt the organization runs itself or a test environment, ask the user once
+   to confirm that it is their Grunt's asset address. Then add
+   `--trust-origin <origin>` (`https://host` or `https://host:port`), here and
+   in step 6. If the download then stops because the manifest's delivery link
+   is outside the trusted origins, that Grunt delivers from a separate host: ask
+   the user for that delivery origin, which their Grunt administrator has, and
+   add `--trust-delivery-origin <origin>` to the download as well. Never add an
+   origin only because it appears in a link or a response.
+
+   The helper follows the manifest's `links.pptx.href` unchanged, checks HTTPS,
+   response types, redirects, size and identity, deletes the URL file after
+   reading it, and prints no tokens or chart data. It reports each object's type
+   and slide rectangle in inches and the SVG `font_families`; confirm both match
+   the plan. It also reports the `theme_font` the server used and whether every
+   object came with a `render_hash`, which `insert_chart.py` writes as the tag
+   the add-in compares its own drawing with. If `theme_font` is null although
+   you passed `--deck`, or `render_hash` is false, the server is an older one:
+   the objects are still native, but the add-in redraws them on first open and
+   PowerPoint then asks to save the deck. Tell the user.
+   One asset can return several objects (for example a chart and its
+   legend); each becomes its own shape. Every placement of an asset, including a
+   repeat on another slide, needs its own download at its own position. Place an
+   asset at most once per slide, and an asset with several objects at most once
+   per deck, counting its other versions and duplicates: the add-in can bind a
+   repeated legend to another chart. For another copy, create a new asset (a
+   duplicate keeps the original's object keys). If the helper reports no
+   `links.pptx` (an older server), or the native download fails with any HTTP
+   error (a 404 for an asset too large for a native placement, another status
+   from an asset host that cannot place assets yet), use the
+   [SVG fallback](#svg-fallback) for that asset and tell the user.
 6. **Insert all assets in one operation.** Write a placements manifest; paths are
    relative to the manifest and slides are zero-based. The rectangle comes from
    the download, so entries take no position or size:
@@ -200,7 +220,7 @@ Do not add LibreOffice's program folder to `PATH`, because it has its own
    fields, off-slide rectangles and invalid indexes are rejected — re-download
    to move or resize, rather than bypassing validation.
 
-   For assets from a Grunt other than the cloud service (step 4), pass the
+   For assets from a Grunt other than the cloud service (step 5), pass the
    same `--trust-origin <origin>`:
 
    ```sh
@@ -230,7 +250,7 @@ Do not add LibreOffice's program folder to `PATH`, because it has its own
    cannot render it, the helper stops rather than fall back: the recipient's
    PowerPoint would fail too, so fix the deck. `--renderer libreoffice` skips
    PowerPoint. When it lists `placeholder_problems`, PowerPoint will not draw
-   those placeholders where their layout puts them: fix each one as step 5
+   those placeholders where their layout puts them: fix each one as step 4
    says, even when the render looks right, and render again.
 
    Build and check one chart slide and one table slide before scaling up a large
@@ -331,13 +351,19 @@ downloads of the same pinned commit. Matching aspect ratio alone is not enough.
 
 ## Fonts and colors
 
-Fonts inside the SVG do not follow the slide theme. Grunt sets them in the SVG's
-`<style>` rules, which `download_chart.py` reports as `font_families`; PowerPoint
-substitutes families the viewer has not installed. Production charts currently
-render axis and legend text in Noto Sans TC, which many PCs lack. Data-label
+Grunt sets the fonts in the SVG's `<style>` rules, which `download_chart.py`
+reports as `font_families`; PowerPoint substitutes families the viewer has not
+installed. Text with no font of its own, such as axis and legend text, is drawn
+in the asset's default font, which for an asset made with the Grunt tools is
+the server's stand-in, Noto Sans TC. Many PCs lack it. A native download with
+`--deck` and `--slide` replaces the stand-in with the slide's theme font, on a
+server that supports it (`theme_font` in the helper's report); the SVG fallback
+keeps the stand-in. When the server does not have the theme font (check
+`get_rendering_fonts`), it draws a substitute, and the add-in redraws the object
+on first open. Data-label
 `style` tokens (for example `"style": "Segoe UI"` on `segmentLabels`) and
-`settings.font.fontFamily` on tables do set the family; axis and legend text
-keep the default. Check the rendered slide and tell the user about any
+`settings.font.fontFamily` on tables set a family of their own, which the theme
+font does not replace. Check the rendered slide and tell the user about any
 substitution that matters. Before choosing a brand font, check it against the
 `get_rendering_fonts` list from the connection check; the renderer substitutes
 families it lacks and reports them as warnings. Prefer families that are also

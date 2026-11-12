@@ -3,8 +3,10 @@ import base64
 import copy
 import io
 import json
+import re
 import tempfile
 import unittest
+import zipfile
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
@@ -43,6 +45,7 @@ PAGE_OBJECT = base64.b64encode(b"serialized page object " * 4).decode()
 DATA_SERVICE = base64.b64encode(b"serialized data service").decode()
 RESOURCES = base64.b64encode(b"serialized resources").decode()
 SHAPE_BOUNDS = base64.b64encode(b"serialized rectangle").decode()
+RENDER_HASH = "0123456789abcdef0123456789abcdef-svg"
 
 
 def edit_manifest():
@@ -371,6 +374,93 @@ class NativePlacementDownloadTests(unittest.TestCase):
                                svgBounds={"x": 600, "y": 72, "width": 120, "height": 60})
         _, saved = self.download(placement_body=placement(native_object(), legend))
         self.assertEqual([item["objectType"] for item in saved["objects"]], ["Line plot Chart", "Legend"])
+
+    def test_render_hash_is_saved_and_a_malformed_one_is_rejected(self):
+        _, saved = self.download(placement_body=placement(native_object(renderHash=RENDER_HASH)))
+        self.assertEqual(saved["objects"][0]["renderHash"], RENDER_HASH)
+        for value in ("", "two words", 'quote"', 7, "a" * 101):
+            with self.subTest(value=value):
+                self.assert_rejected(placement_body=placement(native_object(renderHash=value)), message="renderHash")
+
+    def test_theme_font_of_the_followed_link_is_saved(self):
+        body = edit_manifest()
+        body["links"]["pptx"]["href"] += "&themeFont=Aptos%20Display"
+        self.assertEqual(self.download(body)[1]["themeFont"], "Aptos Display")
+        # A server that does not know themeFont yet leaves it out of the link.
+        self.assertNotIn("themeFont", self.download()[1])
+
+
+class DeckThemeFontTests(unittest.TestCase):
+    """--deck and --slide: the slide's theme font goes to the server as themeFont."""
+
+    def deck(self, directory, heading_font):
+        """A two-slide deck whose theme names heading_font, as (latin, east asian, complex script)."""
+        from pptx import Presentation
+        presentation = Presentation()
+        for _ in range(2):
+            presentation.slides.add_slide(presentation.slide_layouts[6])
+        original, path = Path(directory) / "original.pptx", Path(directory) / "deck.pptx"
+        presentation.save(original)
+        fonts = "".join(f'<a:{script} typeface="{name}"/>' for script, name in zip(("latin", "ea", "cs"), heading_font))
+        with zipfile.ZipFile(original) as source, zipfile.ZipFile(path, "w") as target:
+            for item in source.infolist():
+                data = source.read(item)
+                if item.filename.startswith("ppt/theme/theme"):
+                    data = re.sub(rb"<a:majorFont>.*?</a:majorFont>",
+                                  f"<a:majorFont>{fonts}</a:majorFont>".encode(), data, flags=re.S)
+                target.writestr(item, data)
+        return str(path)
+
+    def test_heading_font_is_latin_then_east_asian_then_complex_script(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            for fonts, expected in ((("Aptos Display", "Yu Gothic", ""), "Aptos Display"), (("", "Yu Gothic", "Arial"), "Yu Gothic"),
+                                    (("", "", "Arial"), "Arial"), (("", "", ""), None)):
+                with self.subTest(fonts=fonts):
+                    self.assertEqual(dc.deck_theme_font(self.deck(tmp, fonts), 1), expected)
+
+    def test_source_url_gets_the_font_once_and_keeps_one_it_has(self):
+        self.assertEqual(dc.with_theme_font(PLACED_SOURCE, "Aptos Display"), PLACED_SOURCE + "&themeFont=Aptos%20Display")
+        self.assertEqual(dc.with_theme_font(PLACED_SOURCE + "&themeFont=Arial", "Calibri"), PLACED_SOURCE + "&themeFont=Arial")
+        self.assertEqual(dc.with_theme_font(PLACED_SOURCE, "R&D Sans"), PLACED_SOURCE + "&themeFont=R%26D%20Sans")
+
+    def run_cli(self, tmp, *arguments):
+        calls, stream = [], io.StringIO()
+        url_file, output = Path(tmp) / "revenue.url", Path(tmp) / "revenue.pptx.json"
+        url_file.write_text(PLACED_SOURCE, encoding="utf-8")
+        body = edit_manifest()
+        body["links"]["pptx"]["href"] += "&themeFont=Aptos%20Display"
+        argv = ["download_chart.py", "--url-file", str(url_file), "--output", str(output), *arguments]
+        with NativePlacementDownloadTests.serve(body, placement(native_object(renderHash=RENDER_HASH)), calls), \
+                patch.object(dc.sys, "argv", argv), redirect_stdout(stream), redirect_stderr(stream):
+            try:
+                dc.main()
+            except SystemExit:
+                return calls, None, url_file.exists(), stream.getvalue()
+        return calls, json.loads(stream.getvalue()), url_file.exists(), stream.getvalue()
+
+    def test_cli_sends_the_slides_theme_font_and_reports_what_the_server_used(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            deck = self.deck(tmp, ("Aptos Display", "", ""))
+            calls, summary, _, output = self.run_cli(tmp, "--format", "pptx", "--deck", deck, "--slide", "1")
+        self.assertEqual(calls[0], PLACED_SOURCE + "&themeFont=Aptos%20Display")
+        self.assertEqual((summary["theme_font"], summary["render_hash"]), ("Aptos Display", True))
+        self.assertNotIn(TOKEN, output)
+
+    def test_cli_without_a_deck_sends_no_font(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            calls, _, _, _ = self.run_cli(tmp, "--format", "pptx")
+        self.assertEqual(calls[0], PLACED_SOURCE)
+
+    def test_wrong_deck_arguments_stop_before_the_url_file_is_read(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            deck = self.deck(tmp, ("Calibri", "", ""))
+            for arguments in (("--format", "pptx", "--deck", deck), ("--format", "pptx", "--slide", "0"),
+                              ("--deck", deck, "--slide", "0"), ("--format", "pptx", "--deck", deck, "--slide", "2"),
+                              ("--format", "pptx", "--deck", str(Path(tmp) / "missing.pptx"), "--slide", "0")):
+                with self.subTest(arguments=arguments[:4]):
+                    calls, summary, url_file_kept, output = self.run_cli(tmp, *arguments)
+                    self.assertEqual((calls, summary, url_file_kept), ([], None, True))
+                    self.assertNotIn(TOKEN, output)
 
 
 if __name__ == "__main__":

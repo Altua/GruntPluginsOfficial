@@ -27,6 +27,8 @@ GRUNT-PAGEOBJECT plus the serialized GRUNT-X-PAGEOBJECT/-DATASERVICE/-RESOURCES/
 -SHAPEBOUNDS payloads, chunked exactly like the add-in's ChunkedTagAdapter. The add-in then
 loads them like any saved Grunt deck, with no download on first open. Each object
 becomes its own shape at the file's svgBounds (points, final slide position).
+An object with a renderHash also gets GRUNT-RENDERHASH, the add-in's hash of its own
+drawing: the add-in then leaves the picture as it is, and opening the deck changes nothing.
 They get no GRUNT-WEB-REVISION-POLICY: a native shape is a snapshot of its commit.
 
 v2 fix (P0 finding, design doc §2.3): the PRIOR version of this script stripped
@@ -833,6 +835,8 @@ def _prepare_native(prs, index, slide_index, path, allowed_origins):
         for tag, field in NATIVE_PAYLOAD_TAGS:
             if item.get(field) is not None:
                 tags.update(chunk_tag_value(tag, item[field]))
+        if item.get("renderHash") is not None:
+            tags["GRUNT-RENDERHASH"] = item["renderHash"]
         tags.update({"GRUNT-WEB-ASSETID": asset_id, "GRUNT-WEB-ASSETCOMMIT": asset_commit})
         if link:
             tags["GRUNT-WEB-LINK"] = link

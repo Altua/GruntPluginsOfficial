@@ -13,6 +13,8 @@ GUID = re.compile(r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}\Z")
 LOWERCASE_COMMIT = re.compile(r"[0-9a-f]{64}\Z")
 NATIVE_BOUNDS = ("x", "y", "width", "height")
 NATIVE_OPTIONAL_PAYLOADS = ("dataServiceBase64", "resourcesBase64", "shapeBoundsBase64")
+# The add-in's hash of its own drawing of an object (GRUNT-RENDERHASH). It is only compared for equality.
+RENDER_HASH = re.compile(r"[0-9A-Za-z-]{1,100}\Z")
 
 P_NS = "http://schemas.openxmlformats.org/presentationml/2006/main"
 A_NS = "http://schemas.openxmlformats.org/drawingml/2006/main"
@@ -156,6 +158,9 @@ def validate_native_placement(document):
         for name in NATIVE_OPTIONAL_PAYLOADS:
             if item.get(name) is not None and not _is_base64(item[name]):
                 raise ValueError(f"{where}: {name} must be non-empty base64 when present.")
+        render_hash = item.get("renderHash")
+        if render_hash is not None and not (isinstance(render_hash, str) and RENDER_HASH.match(render_hash)):
+            raise ValueError(f"{where}: renderHash must be letters, digits and hyphens when present.")
     return objects
 
 
