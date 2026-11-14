@@ -121,7 +121,9 @@ Do not add LibreOffice's program folder to `PATH`, because it has its own
    from the top is `x=58&y=163&width=720&height=442`. A table across a
    widescreen slide is about 12.1 in (1162 px) wide.
 2. **Create the assets** with the Grunt MCP `create_or_update_*` tools. Keep each
-   `assetId` and the latest `assetCommit`.
+   `assetId` and the latest `assetCommit`. When the values come from an Excel
+   workbook of the user's, connect the asset to it, whether or not the user
+   asks: see [Excel workbooks](#excel-workbooks-on-the-users-computer).
 3. **Mint one edit link per asset per deck**: `create_asset_link` with
    `permission: "edit"`. Reuse it for repeated placements of that asset in the
    same deck; mint a new one for a different deck. Its `assetUrl` is the
@@ -266,8 +268,14 @@ slow to open. Tell the user.
 
 ## Excel workbooks on the user's computer
 
-When the user wants a chart or table from an Excel workbook on their computer
-kept connected, linked or updating, give the asset a connection to that file.
+When you take a chart's or table's values from an Excel workbook of the user's,
+connect the asset to that workbook, whether or not the user asks for it. That
+includes a workbook the user names or attaches, and one you find in the folder
+you work in. Make an asset without a connection only when the user asks for
+fixed values, when no range in the workbook holds the asset's values (see
+"Values the workbook does not hold" below), or when the steps below cannot
+connect it.
+
 When the workbook is saved, Grunt in PowerPoint on that computer then shows that
 the object has new data, and the user applies it with Update (or Update all in
 the Data Connection Manager). Grunt does not redraw it on its own.
@@ -279,7 +287,7 @@ the Data Connection Manager). Grunt does not redraw it on its own.
 2. **Read the range yourself**, header row included, with the values exactly as
    the workbook holds them: no totals, reordering or rounding. With openpyxl,
    open the workbook with `data_only=True` so formulas give their last calculated
-   values.
+   values. When the workbook defines a named range for that data, use it.
 3. **Create the asset** with those values as `data` (for a table, `cells.values`) and
    `"dataImportDefinition": {"$type": "excel", "filePath": "<full path>", "range": "Sales!A1:E5"}`.
    The range is worksheet-qualified, or a named range, and matches the data's
@@ -299,10 +307,28 @@ the Data Connection Manager). Grunt does not redraw it on its own.
    object is a static picture. Unless you opened the deck in PowerPoint with
    Grunt yourself, say that you have not seen it update. Moving or renaming the
    workbook breaks the connection; Grunt's Data
-   Connection Manager in PowerPoint can point it at the new place.
+   Connection Manager in PowerPoint can point it at the new place. Say which
+   assets are connected, to which workbook, and which are not, and why.
+
+**Values the workbook does not hold.** A connection fills the asset with the
+range's values exactly as they are, so it needs a range laid out the way the
+chart or table takes its data. Values you calculate or rearrange, such as the
+step changes a waterfall shows from a column of totals, or a sheet laid out
+differently from the chart's data, cannot be connected as they are. Make that
+asset from your values without `dataImportDefinition`, and still connect the
+others. Then offer to add ranges to the workbook that calculate or lay out those
+values with formulas, so that they can be connected too. Change the workbook only
+when the user agrees.
+
+Values in the workbook that look wrong, such as a number typed over a formula,
+are no reason to leave an asset unconnected. Connect it and point the values out:
+when the user corrects the workbook and saves it, Update brings the correction
+into the deck.
 
 **Only a copy.** When you have the workbook only as a copy, such as a file the
-user attached in a chat app, you cannot read the original yourself.
+user attached in a chat app, or under a path that is not its path on the user's
+computer, such as a folder an app shares into your sandbox, you cannot give the
+original's path yourself.
 
 - If the Grunt tools include `register_local_excel_connection`, call it with the
   range and either the `filePath` the user gave or the copy's `fileName` and the
