@@ -20,8 +20,9 @@ that works for the whole task, and do not ask the user to sign in to another.
    reach, each with a `documentToken`, and gives the slide size in points. Pass the
    token of the deck to change to every other `deck_*` call. With several open,
    match the one the user means by name, or ask.
-2. **Keep it connected to Excel when asked.** When the user wants a chart or table
-   from their Excel file kept connected, linked or updating, call
+2. **Connect it to the user's Excel workbook.** When you take a chart's or table's
+   values from an Excel workbook of the user's, keep the asset connected to it,
+   whether or not the user asks. Call
    `register_local_excel_connection` first: with `filePath` if they named the
    file's path, or, for a file they attached, its `fileName` and the SHA-256 of
    your copy, computed in code execution. Pass the `data` and
@@ -30,6 +31,12 @@ that works for the whole task, and do not ask the user to sign in to another.
    Never send a `dataImportDefinition` without the `filePath` it returns. If the
    tool is missing, or cannot find the file, make the chart from your copy without
    `dataImportDefinition` and tell the user it is not connected.
+   A connection shows the range's values as they are. Leave it out only when the
+   user asks for fixed values, or when no range holds the values the chart shows,
+   such as step changes you calculate for a waterfall; connect the other charts,
+   say which are not connected and why, and offer to add formula ranges to the
+   workbook so they can be connected too. Values that look wrong in the sheet are
+   no reason to skip the connection: point them out.
 3. **Make the chart or table** with its `create_or_update_*` tool. Give colours as
    hex `#RRGGBB` only: theme names such as `Accent1` in `seriesColors`,
    `sliceColors` or `pointColors` make the call fail. On an update, always send
