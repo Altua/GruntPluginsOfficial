@@ -15,7 +15,9 @@
   verify its identity and original bytes.
 - Test Office add-in open/edit/save/reopen before claiming native editing, including
   that native shapes keep their positions. Record compound-object limitations
-  separately from static SVG appearance.
+  separately from static SVG appearance. Claim that opening the deck changes
+  nothing only when every native download reported a `theme_font` and
+  `render_hash: true`, and say whether you saw it in PowerPoint with Grunt.
 - For an asset kept connected to Excel, confirm with `inspect_object`
   (`dataStructure: "Source"`) that `dataConnection.filePath` names the workbook
   on the user's computer, not a sandbox copy. Record whether a refresh from the

@@ -10,7 +10,9 @@ Keep downloaded SVG bytes unchanged.
 laid out at the URL's x/y/width/height, each with its SVG and the add-in's native
 tag payloads. The validated response and the pinned permanent source are written
 to one private JSON file for insert_chart.py. The payloads are the customer's
-full chart model: never print or log them.
+full chart model: never print or log them. --deck and --slide name the slide
+the placement goes on: its theme font is sent as themeFont, so text without a
+font of its own is laid out in the deck's font, as the Grunt add-in draws it.
 
 HTTPS origins must be allowlisted (production: assets.grunt.io; --trust-origin
 opts in others). Redirects, wrong response types, oversized bodies, and identity
@@ -30,7 +32,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from pptx_validation import svg_dimensions_points, validate_native_placement, NATIVE_BOUNDS, NATIVE_OPTIONAL_PAYLOADS
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode, parse_qs, urlsplit, urlunsplit
+from urllib.parse import urlencode, parse_qs, quote, urlsplit, urlunsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 import json
@@ -41,6 +43,8 @@ MAX_RESPONSE_BYTES = 10 * 1024 * 1024
 # A native placement carries every object's SVG plus its serialized model.
 MAX_PPTX_RESPONSE_BYTES = 16 * 1024 * 1024
 REPRESENTATION_TYPES = {"svg": "image/svg+xml", "pptx": "application/json"}
+
+DRAWINGML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main"
 
 CARRIER_SRC_ATTR = "data-grunt-src"
 CARRIER_VERSION_ATTR = "data-grunt-link-version"
@@ -377,6 +381,9 @@ def download_pptx(url: str, output_path: str, allowed_origins, delivery_origins=
     """
     _, pinned_source, identity, origin, pptx_link = _resolve_manifest(url, allowed_origins, "pptx")
     delivery = _checked_delivery_url(pptx_link.get("href"), (origin,) + tuple(delivery_origins))
+    # The font the server lays the placement out with: absent when the source URL named none,
+    # or when the server does not know themeFont yet.
+    theme_font = parse_qs(urlsplit(delivery).query).get("themeFont", [None])[0]
     # The manifest just accepted this link, so an HTTP error here is about the placement: a 404
     # when it would exceed the server's response bound, another status from an asset host that
     # cannot place assets yet. The SVG link of the same manifest still works in both cases.
@@ -394,16 +401,54 @@ def download_pptx(url: str, output_path: str, allowed_origins, delivery_origins=
     if (document["assetId"].lower() != identity["asset_id"]
             or document["projectCommitKey"] != identity["asset_commit"]):
         fail("Native placement does not match the resolved asset version.")
-    fields = ("pageObjectKey", "objectType", "svg", "pageObjectBase64") + NATIVE_OPTIONAL_PAYLOADS
+    fields = ("pageObjectKey", "objectType", "svg", "pageObjectBase64") + NATIVE_OPTIONAL_PAYLOADS + ("renderHash",)
     saved = {
         "schemaVersion": 1, "assetId": identity["asset_id"], "projectCommitKey": identity["asset_commit"],
-        "source": pinned_source,
+        "source": pinned_source, **({"themeFont": theme_font} if theme_font else {}),
         "objects": [{name: item[name] for name in fields if item.get(name) is not None}
                     | {"svgBounds": {name: item["svgBounds"][name] for name in NATIVE_BOUNDS}}
                     for item in objects],
     }
     _write_private_file(output_path, json.dumps(saved).encode("utf-8"))
     return saved
+
+
+def deck_theme_font(deck: str, slide_index: int) -> str | None:
+    """The font the Grunt add-in gives text without a font of its own on this slide: the heading
+    font of the slide master's theme (Latin, else East Asian, else complex script)."""
+    from pptx import Presentation
+    from pptx.opc.constants import RELATIONSHIP_TYPE
+
+    try:
+        slides = Presentation(deck).slides
+    except Exception:
+        fail("Cannot read --deck as a PowerPoint presentation.")
+    if not 0 <= slide_index < len(slides):
+        fail(f"--slide {slide_index} is not in --deck: it has {len(slides)} slides, and the first is 0.")
+    try:
+        theme = slides[slide_index].slide_layout.slide_master.part.part_related_by(RELATIONSHIP_TYPE.THEME)
+        fonts = ET.fromstring(theme.blob).find(f".//{{{DRAWINGML_NS}}}fontScheme/{{{DRAWINGML_NS}}}majorFont")
+    except (KeyError, ET.ParseError):
+        return None
+    for script in ("latin", "ea", "cs"):
+        font = fonts.find(f"{{{DRAWINGML_NS}}}{script}") if fonts is not None else None
+        name = font.get("typeface", "").strip() if font is not None else ""
+        if name:
+            # The server refuses a longer name or one with control characters.
+            return name if len(name) <= 100 and name.isprintable() else None
+    return None
+
+
+def with_theme_font(url: str, font: str) -> str:
+    """The source URL with themeFont added, unless it names one already. The manifest bakes it
+    into links.pptx; a server that does not know the parameter ignores it."""
+    try:
+        parsed = urlsplit(url)
+        if "themeFont" in parse_qs(parsed.query, keep_blank_values=True):
+            return url
+    except ValueError:
+        fail("Malformed source URL.")
+    return urlunsplit(parsed._replace(query=f"{parsed.query}&themeFont={quote(font, safe='')}".lstrip("&")))
 
 
 # ---------------------------------------------------------------------------
@@ -772,6 +817,9 @@ def native_summary(path: str, placement: dict) -> dict:
                                        (("left", "x"), ("top", "y"), ("width", "width"), ("height", "height"))}}
                     for item in placement["objects"]],
         "font_families": families,
+        # What makes the add-in leave the pictures as they are when the deck is opened.
+        "theme_font": placement.get("themeFont"),
+        "render_hash": all(item.get("renderHash") for item in placement["objects"]),
     }
 
 
@@ -817,9 +865,23 @@ def main():
              "Repeatable. Does not trust permanent sources or SVG carriers. "
              "Same-origin delivery is allowed by default.",
     )
+    parser.add_argument(
+        "--deck", default=None,
+        help="With --format pptx: the presentation the placement goes into. Its theme font is sent as themeFont.",
+    )
+    parser.add_argument(
+        "--slide", type=int, default=None,
+        help="With --deck: the zero-based index of the slide the placement goes on.",
+    )
     args = parser.parse_args()
+    if (args.deck is None) != (args.slide is None) or (args.deck is not None and args.format != "pptx"):
+        parser.error("--deck and --slide go together, and only with --format pptx.")
 
+    # Before the URL file is read, and with that deleted: a wrong --deck or --slide costs nothing.
+    theme_font = deck_theme_font(args.deck, args.slide) if args.deck is not None else None
     url = read_url(args)
+    if theme_font:
+        url = with_theme_font(url, theme_font)
     trusted_origins = tuple(args.trust_origin)
     allowed_origins = DEFAULT_ASSET_LINK_ORIGINS
     for origin in trusted_origins:

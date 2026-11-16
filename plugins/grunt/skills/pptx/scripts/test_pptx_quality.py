@@ -15,7 +15,7 @@ import insert_chart
 from pptx_validation import validate_ppt_svg, fit_placement, svg_viewport
 from restore_assets import related_parts, tags_for
 from test_manifest_download import (ASSET, COMMIT, LATEST, ORIGIN, SOURCE, TOKEN, OBJECT_KEY, OBJECT_SVG, PAGE_OBJECT,
-                                    DATA_SERVICE, RESOURCES, SHAPE_BOUNDS, native_object, placement)
+                                    DATA_SERVICE, RESOURCES, SHAPE_BOUNDS, RENDER_HASH, native_object, placement)
 
 SVG = b'''<svg xmlns="http://www.w3.org/2000/svg" width="720pt" height="360pt">
 <!-- assetId:11111111-1111-1111-1111-111111111111,commitId:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa -->
@@ -201,6 +201,16 @@ class NativePlacementTests(unittest.TestCase):
         self.assertEqual({'left': 0.5, 'top': 1.0, 'width': 7.5, 'height': 4.6042}, result['placement_inches'])
         for secret in (SOURCE, PAGE_OBJECT, DATA_SERVICE, RESOURCES):
             self.assertNotIn(secret, json.dumps(result))
+
+    def test_render_hash_becomes_the_tag_the_add_in_compares(self):
+        self.insert([{'pptx': self.native_file(native_object(renderHash=RENDER_HASH)), 'slide': 0}])
+        [(_, tags, _)] = self.shapes()
+        self.assertEqual(NATIVE_TAGS | {'GRUNT-RENDERHASH': RENDER_HASH}, tags)
+
+    def test_malformed_render_hash_is_refused(self):
+        with self.assertRaisesRegex(ValueError, 'renderHash'):
+            self.insert([{'pptx': self.native_file(native_object(renderHash='two words')), 'slide': 0}])
+        self.assertFalse(self.output.exists())
 
     def test_absent_optional_payloads_write_no_tags(self):
         item = native_object(dataServiceBase64=None)
