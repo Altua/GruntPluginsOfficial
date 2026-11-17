@@ -66,7 +66,7 @@ GUID_PATTERN = re.compile(
     r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
 )
 ASSET_PATH_PATTERN = re.compile(
-    r"^/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$"
+    r"^/(?:assets/|api/)?([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$"
 )
 COMMIT_PATTERN = re.compile(r"^[0-9a-fA-F]{64}$")
 
@@ -418,7 +418,7 @@ def parse_carrier_url(url: str, allowed_origins, require_commit=True) -> dict | 
     """Full structural validation mirroring @grunt-io/react's carrier.ts
     `parseCarrierUrl` (design §6/§8): origin allowlist membership (which
     subsumes the "must be HTTPS" rule), no embedded credentials, no fragment,
-    a `/{guid}` path (+ query `assetId` agreement if one happens to be
+    a `/{guid}`, `/assets/{guid}`, or legacy `/api/{guid}` path (+ query `assetId` agreement if one happens to be
     present), a well-formed 64-hex `commit` appearing exactly once, and a
     structurally valid `token` appearing exactly once. Returns None on ANY
     failure -- never a partial/best-effort result. Does NOT validate the
