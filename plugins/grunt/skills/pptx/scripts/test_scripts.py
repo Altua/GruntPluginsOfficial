@@ -380,7 +380,8 @@ def test_trust_origin_flag():
 
     download_chart.py has its OWN --trust-origin coverage in
     test_download_svg_security() below (pre-fetch origin/path/commit/token
-    validation, plus a CLI end-to-end case) -- it is NOT covered here.
+    validation, plus a CLI end-to-end case). Here it only shares the
+    asset-path check that all three modules apply to a customer origin.
     download_chart.py used to auto-trust whatever origin a download URL
     happened to point at (an SSRF/confused-deputy gap: any https origin
     could be fetched from, and would then be trusted for the post-download
