@@ -380,7 +380,8 @@ def test_trust_origin_flag():
 
     download_chart.py has its OWN --trust-origin coverage in
     test_download_svg_security() below (pre-fetch origin/path/commit/token
-    validation, plus a CLI end-to-end case) -- it is NOT covered here.
+    validation, plus a CLI end-to-end case). Here it only shares the
+    asset-path check that all three modules apply to a customer origin.
     download_chart.py used to auto-trust whatever origin a download URL
     happened to point at (an SSRF/confused-deputy gap: any https origin
     could be fetched from, and would then be trusted for the post-download
@@ -395,6 +396,17 @@ def test_trust_origin_flag():
     mods = [("get_svg_info", gi)]
     if ic is not None:
         mods.append(("insert_chart", ic))
+
+    for name, mod in [("download_chart", dc)] + mods:
+        for prefix in ("", "assets/", "api/"):
+            source = f"https://grunt.example.com/{prefix}{FIXTURE_ASSET_ID}?commit={FIXTURE_COMMIT}&token={FIXTURE_TOKEN}"
+            check(mod.parse_carrier_url(source, ("https://grunt.example.com",)) is not None,
+                  f"{name}: accepts trusted customer source path {prefix!r}")
+            check(mod.parse_carrier_url(source, mod.DEFAULT_ASSET_LINK_ORIGINS) is None,
+                  f"{name}: customer source requires explicit origin trust")
+        unexpected = f"https://grunt.example.com/other/{FIXTURE_ASSET_ID}?commit={FIXTURE_COMMIT}&token={FIXTURE_TOKEN}"
+        check(mod.parse_carrier_url(unexpected, ("https://grunt.example.com",)) is None,
+              f"{name}: rejects unexpected customer source paths")
 
     # -- hostile port: parse_carrier_url must fail closed (return None), --
     # -- never crash with a raw ValueError from accessing `.port` ----------
@@ -1178,7 +1190,7 @@ def test_insert_chart_trust_origin():
 # 6. Functional test: native placement, download_chart.py --format pptx -> insert_chart.py
 # ---------------------------------------------------------------------------
 
-def test_native_placement_functional():
+def test_native_placement_functional(customer=False):
     """The default edit-link flow end to end through both CLIs (mocked network):
     the URL file is consumed, links.pptx is followed unchanged, nothing secret is
     printed, and the saved deck carries the add-in's native tags at svgBounds."""
@@ -1191,10 +1203,12 @@ def test_native_placement_functional():
     object_key = "0f8fad5b-d9cb-469f-a165-70867728950e"
     page_object = base64.b64encode(b"serialized page object").decode()
     object_svg = '<svg xmlns="http://www.w3.org/2000/svg" width="720" height="442"><rect width="720" height="442"/></svg>'
-    pptx_href = f"https://assets.grunt.io/assets/pptx?assetId={FIXTURE_ASSET_ID}&commit={FIXTURE_COMMIT}&token={FIXTURE_TOKEN}"
+    origin = "https://grunt.example.com" if customer else "https://assets.grunt.io"
+    source = FIXTURE_LINK.replace("https://assets.grunt.io/", origin + "/assets/") if customer else FIXTURE_LINK
+    pptx_href = f"{origin}/{'api/' if customer else ''}assets/pptx?assetId={FIXTURE_ASSET_ID}&commit={FIXTURE_COMMIT}&token={FIXTURE_TOKEN}"
     manifest = {"schemaVersion": 1, "assetId": FIXTURE_ASSET_ID, "resolvedCommit": FIXTURE_COMMIT, "scope": "edit",
-                "links": {"self": {"href": FIXTURE_LINK, "type": "application/json", "schemaVersion": 1},
-                          "svg": {"href": "https://assets.grunt.io/assets/svg?opaque", "type": "image/svg+xml"},
+                "links": {"self": {"href": source, "type": "application/json", "schemaVersion": 1},
+                          "svg": {"href": origin + "/assets/svg?opaque", "type": "image/svg+xml"},
                           "pptx": {"href": pptx_href, "type": "application/json", "schemaVersion": 1}}}
     native = {"schemaVersion": 1, "assetId": FIXTURE_ASSET_ID, "projectCommitKey": FIXTURE_COMMIT,
               "objects": [{"pageObjectKey": object_key, "objectType": "Line plot Chart", "svg": object_svg,
@@ -1211,12 +1225,12 @@ def test_native_placement_functional():
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
         url_file = tmp_path / "revenue.url"
-        url_file.write_text(FIXTURE_LINK + "&x=58&y=163&width=720&height=442\n", encoding="utf-8")
+        url_file.write_text(source + "&x=58&y=163&width=720&height=442\n", encoding="utf-8")
         original_build_opener, old_argv = dc.build_opener, sys.argv
         dc.build_opener = lambda *a, **kw: Opener()
         try:
             sys.argv = ["download_chart.py", "--format", "pptx", "--url-file", str(url_file),
-                        "--output", str(tmp_path / "revenue.pptx.json")]
+                        "--output", str(tmp_path / "revenue.pptx.json")] + (["--trust-origin", origin] if customer else [])
             _, out, err, code = run_capturing(dc.main)
         finally:
             dc.build_opener, sys.argv = original_build_opener, old_argv
@@ -1235,7 +1249,7 @@ def test_native_placement_functional():
         old_argv = sys.argv
         try:
             sys.argv = ["insert_chart.py", "--pptx", str(tmp_path / "in.pptx"), "--output", str(tmp_path / "out.pptx"),
-                        "--manifest", str(tmp_path / "placements.json")]
+                        "--manifest", str(tmp_path / "placements.json")] + (["--trust-origin", origin] if customer else [])
             _, out, err, code = run_capturing(ic.main)
         finally:
             sys.argv = old_argv
@@ -1254,7 +1268,7 @@ def test_native_placement_functional():
             svg_media = [z.read(n) for n in z.namelist() if n.startswith("ppt/media/") and n.endswith(".svg")]
         check(tags == {"GRUNT-PAGEOBJECT": object_key, "GRUNT-X-PAGEOBJECT": page_object,
                        "GRUNT-WEB-ASSETID": FIXTURE_ASSET_ID, "GRUNT-WEB-ASSETCOMMIT": FIXTURE_COMMIT,
-                       "GRUNT-WEB-LINK": FIXTURE_LINK},
+                       "GRUNT-WEB-LINK": source},
               "insert_chart.py: a native shape has exactly the add-in tags plus the web identity "
               "(no revision policy, shape bounds or version stamp; no empty optional payloads)")
         check(rectangle == (552450, 1552575, 6858000, 4210050),
@@ -1290,6 +1304,7 @@ def main():
 
     print("-- native placement functional test (download_chart.py --format pptx -> insert_chart.py) --")
     test_native_placement_functional()
+    test_native_placement_functional(customer=True)
 
     print(f"\n{_passed} check(s) passed, {len(_failures)} failed.")
     if _failures:
