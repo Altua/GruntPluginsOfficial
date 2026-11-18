@@ -1,0 +1,17 @@
+{
+  "validDomains": [
+    "*.oaistatic.com",
+    "*.oaiusercontent.com",
+    "cdn.grunt.io",
+    "cdn.openai.com",
+    "chatgpt.com",
+    "fonts.googleapis.com",
+    "fonts.gstatic.com",
+    "grunt-mcp-server-staging.azurewebsites.net",
+    "grunt-mcp-server.azurewebsites.net",
+    "grunt-web-service-layer-staging.azurewebsites.net",
+    "grunt-web-service-layer.azurewebsites.net",
+    "mcp.grunt.io",
+    "unpkg.com"
+  ]
+}

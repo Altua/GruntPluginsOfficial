@@ -1,0 +1,21 @@
+{
+  "name": "grunt",
+  "version": "0.3.12",
+  "description": "Grunt charts and tables: Grunt's MCP server and skills for charts and tables inside PowerPoint (grunt-powerpoint), in .pptx files built outside PowerPoint (grunt-pptx) and in interactive HTML reports (grunt-html). Sign in with your own Grunt account.",
+  "author": {
+    "name": "Grunt"
+  },
+  "homepage": "https://github.com/Altua/GruntPluginsOfficial",
+  "repository": "https://github.com/Altua/GruntPluginsOfficial",
+  "keywords": [
+    "grunt",
+    "charts",
+    "tables",
+    "powerpoint",
+    "pptx",
+    "html",
+    "reports",
+    "mcp"
+  ],
+  "logo": "assets/logo.png"
+}
