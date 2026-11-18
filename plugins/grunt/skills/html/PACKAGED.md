@@ -19,10 +19,11 @@ output in the user's directory, never in the installed plugin or its cache.
 
 ## Grunt connection
 
-The plugin brings no Grunt server. The skill works through the Grunt connector
-that is connected in the user's app, normally the organization's, which can be
-Grunt's cloud service or a Grunt the organization runs itself. Each user signs
-in with their own Grunt account; no credentials or capability links are bundled.
+The skill works through the Grunt connector that is connected in the user's
+app: in Claude normally the organization's, in other apps the server the plugin
+brings. It is Grunt's cloud service or a Grunt the organization runs itself.
+Each user signs in with their own Grunt account; no credentials or capability
+links are bundled.
 SKILL.md starts by checking the connection, and [CONNECT.md](CONNECT.md) lists
 the steps to connect in common apps.
 

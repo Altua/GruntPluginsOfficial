@@ -41,22 +41,17 @@ def connection_section(skill_md):
 
 class ManifestTests(unittest.TestCase):
     def test_claude_and_codex_manifests_agree(self):
+        # The descriptions differ: Codex gets Grunt's MCP server and no Claude
+        # Slides skill. tests/test_harness_variants.py checks what each one gets.
         claude = read_json(PLUGIN / ".claude-plugin" / "plugin.json")
         codex = read_json(PLUGIN / ".codex-plugin" / "plugin.json")
-        for key in ("name", "version", "description"):
+        for key in ("name", "version"):
             self.assertEqual(claude[key], codex[key], key)
 
     def test_codex_manifest_paths_exist(self):
         codex = read_json(PLUGIN / ".codex-plugin" / "plugin.json")
-        self.assertTrue((PLUGIN / codex["skills"]).is_dir())
-
-    def test_plugin_bundles_no_mcp_server(self):
-        # The skills use the Grunt connector the user's organization has
-        # connected, which can be its own installation. A bundled server for one
-        # fixed address would also take the place of that connector in Claude Code.
-        self.assertFalse((PLUGIN / ".mcp.json").exists())
-        for manifest in (".claude-plugin", ".codex-plugin"):
-            self.assertNotIn("mcpServers", read_json(PLUGIN / manifest / "plugin.json"), manifest)
+        for path in codex["skills"]:
+            self.assertTrue((PLUGIN / path).is_dir(), path)
 
     def test_icon_paths_exist(self):
         # The directory shows these icons; a release without the files loses them.

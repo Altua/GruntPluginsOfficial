@@ -25,12 +25,14 @@ original file during import.
 
 ## Before you start: check the Grunt connection
 
-Do this before planning, installing anything or writing files. The plugin brings
-no Grunt server of its own: the skill works through the Grunt connector that is
-connected in this session, normally the organization's connector, called just
-"Grunt". It can be Grunt's cloud service or a Grunt the organization runs itself,
-and each user signs in with their own Grunt account. Work with the Grunt that is
-connected. Never add, suggest or switch to another server address on your own.
+Do this before planning, installing anything or writing files. The skill works
+through the Grunt connector that is connected in this session. In Claude the
+plugin brings none: it is normally the organization's connector, called just
+"Grunt". In other apps the plugin brings a server for Grunt's cloud service,
+called `grunt`. A connector can also point at a Grunt the organization runs
+itself, and each user signs in with their own Grunt account. Work with the Grunt
+that is connected. Never add, suggest or switch to another server address on
+your own.
 
 1. **Find the Grunt tools.** Look for tools whose names are, or end with,
    `create_or_update_bar_chart`, `create_asset_link` and `get_rendering_fonts`.
