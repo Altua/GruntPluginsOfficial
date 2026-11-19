@@ -135,6 +135,8 @@ marketplace and plugin when they trust the folder:
 
 ## Maintainers
 
+See [Release the ChatGPT package](packaging/README.md) for the build and release process.
+
 - Each plugin lives in `plugins/<name>/` and is listed in both
   `.claude-plugin/marketplace.json` (Claude Code) and
   `.agents/plugins/marketplace.json` (Codex).

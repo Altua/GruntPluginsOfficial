@@ -1,0 +1,94 @@
+name: Plugin release
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    tags: ['v[0-9]*']
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate plugin
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Check release inputs
+        id: inputs
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          marketplace=(plugins/grunt .claude-plugin/marketplace.json .agents/plugins/marketplace.json)
+          if [[ "$GITHUB_EVENT_NAME" == pull_request ]] &&
+             git diff --quiet "$BASE_SHA" HEAD -- "${marketplace[@]}" packaging/chatgpt tests; then
+            exit 0
+          fi
+
+          version=$(jq -er .version plugins/grunt/.codex-plugin/plugin.json)
+          if [[ "$GITHUB_REF_TYPE" == tag ]]; then
+            git merge-base --is-ancestor HEAD origin/main ||
+              { echo "Tag a commit on main." >&2; exit 1; }
+            [[ "$GITHUB_REF_NAME" == "v$version" ]] ||
+              { echo "Tag must match the plugin version v$version." >&2; exit 1; }
+          elif ! git diff --quiet "$BASE_SHA" HEAD -- "${marketplace[@]}" ||
+               { git cat-file -e "$BASE_SHA:packaging/chatgpt/plugin.json" 2>/dev/null &&
+                 ! git diff --quiet "$BASE_SHA" HEAD -- packaging/chatgpt; }; then
+            previous=$(git show "$BASE_SHA:plugins/grunt/.codex-plugin/plugin.json" | jq -er .version)
+            if [[ "$previous" == "$version" || $(printf '%s\n' "$previous" "$version" | sort -V | tail -n 1) != "$version" ]]; then
+              echo "Increase the plugin version in both manifests for a distribution change." >&2
+              exit 1
+            fi
+          fi
+          echo "build=true" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-python@v5
+        if: steps.inputs.outputs.build == 'true'
+        with:
+          python-version: '3.12'
+      - name: Run marketplace and helper tests
+        if: steps.inputs.outputs.build == 'true'
+        run: |
+          python -m pip install -r plugins/grunt/skills/pptx/requirements.txt
+          python -m unittest discover -s tests
+          python -m unittest discover -s plugins/grunt/skills/pptx/scripts
+          python -m unittest discover -s plugins/grunt/skills/slides/scripts
+          node --check plugins/grunt/skills/html/scripts/report.mjs
+      - name: Build ChatGPT ZIP
+        if: steps.inputs.outputs.build == 'true'
+        run: |
+          node packaging/chatgpt/build.mjs "$RUNNER_TEMP/plugin-package"
+          cd "$RUNNER_TEMP/plugin-package"
+          unzip -tq ./*.zip
+          sha256sum ./*.zip > SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        if: steps.inputs.outputs.build == 'true'
+        with:
+          name: chatgpt-plugin
+          path: ${{ runner.temp }}/plugin-package/
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    name: Publish GitHub release
+    if: github.ref_type == 'tag'
+    needs: validate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: chatgpt-plugin
+          path: ${{ runner.temp }}/plugin-package/
+      - name: Attach the verified ZIP and checksum
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd "$RUNNER_TEMP/plugin-package"
+          sha256sum -c SHA256SUMS
+          gh release create "$GITHUB_REF_NAME" ./*.zip ./SHA256SUMS \
+            --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes

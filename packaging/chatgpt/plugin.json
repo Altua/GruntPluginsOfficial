@@ -1,0 +1,30 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "grunt",
+  "description": "Create and edit Grunt charts and tables, and use them in PowerPoint files and HTML reports.",
+  "author": {
+    "name": "Grunt"
+  },
+  "repository": "https://github.com/Altua/GruntPluginsOfficial",
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "Grunt",
+        "shortDescription": "Editable charts and tables",
+        "longDescription": "Create, inspect, and update Grunt charts and tables with your Grunt Cloud account. Open saved assets in Grunt Web Studio, or use them in PowerPoint files and interactive HTML reports in a compatible execution environment.",
+        "developerName": "Grunt",
+        "category": "Productivity",
+        "defaultPrompt": [
+          "Create a Grunt column chart for quarterly revenue of $1.2M, $1.5M, $1.4M, and $1.8M.",
+          "Create a formatted Grunt table for three projects with status and next milestone."
+        ],
+        "composerIcon": "./assets/logo.png",
+        "logo": "./assets/logo.png",
+        "websiteURL": "https://www.grunt.pro/",
+        "supportURL": "https://www.grunt.pro/contact-us",
+        "privacyPolicyURL": "https://app.grunt.pro/privacy-policy",
+        "termsOfServiceURL": "https://app.grunt.pro/terms"
+      }
+    }
+  }
+}
