@@ -1,13 +1,9 @@
-# Agent instructions
+# Generated marketplace
 
-## Commits and pull requests
+This repository distributes the Grunt plugin marketplace. Author changes to
+plugin skills, manifests, and release packaging in Altua/Oak under
+`apps/llm-plugins`. The HTML skill and its bundled runtime live there under
+`skills/html`.
 
-- Never add AI attribution. No `Co-Authored-By` trailers in commit messages, and
-  no "Generated with Claude Code" or similar lines in commit messages, pull
-  request titles or descriptions, or review comments.
-
-## Changing the plugin
-
-Follow the **Maintainers** checklist in [README.md](README.md): bump `version` in
-both plugin manifests, keep the connection check and `CONNECT.md` identical in
-both skills, and run the validation and tests listed there before pushing.
+Review the generated marketplace pull requests that Oak opens and merge them
+to distribute an update.
