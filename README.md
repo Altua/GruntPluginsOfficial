@@ -135,32 +135,6 @@ marketplace and plugin when they trust the folder:
 
 ## Maintainers
 
-- Each plugin lives in `plugins/<name>/` and is listed in both
-  `.claude-plugin/marketplace.json` (Claude Code) and
-  `.agents/plugins/marketplace.json` (Codex).
-- Each plugin has a Claude Code manifest (`.claude-plugin/plugin.json`) and a
-  Codex manifest (`.codex-plugin/plugin.json`). Bump `version` in both for every
-  release; users on a pinned version receive changes only when it changes.
-- The plugin bundles no MCP server: no `.mcp.json`, and no `mcpServers` in either
-  manifest. The skills work with whichever Grunt connector the user has, which
-  can be an installation their organization runs itself, so keep fixed server
-  addresses out of them. Only `CONNECT.md` names the cloud service's address.
-- Skill names have no `grunt-` prefix. The plugin's name already namespaces
-  them, so `pptx` lists as `grunt:pptx`. A skill's folder and its `name` must be
-  the same, and `slides` finds the `pptx` skill's downloader by that folder name.
-- Write skills for any agent: refer to the skill's folder as `<skill-dir>`
-  rather than a host variable, and describe tools by what they do rather than by
-  one host's tool names. The connection check and `CONNECT.md` are shared by
-  the file-building skills (pptx, html, slides) and must stay identical.
-  The powerpoint skill runs inside PowerPoint on the host's Grunt connector and has
-  neither; keep its body short, because the host loads it on most chart requests.
-- Before pushing, run:
-
-  ```sh
-  claude plugin validate .
-  claude plugin validate ./plugins/grunt
-  python -m unittest discover -s tests -p "test_*.py"
-  python -m unittest discover -s plugins/grunt/skills/pptx/scripts -p "test_*.py"
-  python plugins/grunt/skills/pptx/scripts/test_scripts.py
-  python -m unittest discover -s plugins/grunt/skills/slides/scripts -p "test_*.py"
-  ```
+This marketplace is generated from Altua/Oak. Make changes to plugin sources
+in Oak under `apps/llm-plugins`. Oak's release workflow opens a pull request
+with the generated files and records the Oak commit in `OAK_SOURCE`.
