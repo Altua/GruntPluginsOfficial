@@ -201,7 +201,7 @@ orange for both interaction states. Weight and tint still distinguish selection.
 surface token to the chart's paper color, even when surrounding report chrome is
 dark. Choose contrast against the actual drawing. The tokens do not recolor a
 baked SVG or PowerPoint's native editing controls. See [PACKAGED.md](PACKAGED.md)
-for the bundled CLI and offline visual review fixtures.
+for the bundled CLI and the trusted origins.
 
 ## Modes and supported profile
 
