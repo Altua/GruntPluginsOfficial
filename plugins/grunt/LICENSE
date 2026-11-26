@@ -1,0 +1,20 @@
+Grunt Plugin License
+
+Copyright (c) 2026 Grunt AS. All rights reserved.
+
+Grunt AS grants you a non-exclusive license to download, install, and use the
+Grunt plugin as distributed by Grunt or through an authorized marketplace.
+Use of Grunt products and services is governed by your applicable agreement
+with Grunt. Grunt's standard Terms of Service are at https://app.grunt.pro/terms.
+
+You may share reports and presentations generated with the plugin, including
+the Grunt runtime embedded by the plugin in generated HTML reports. Recipients
+may run the embedded runtime as part of the report.
+
+All other rights in the plugin and its accompanying documentation are reserved.
+Modification, standalone redistribution, and sublicensing of the plugin or its
+Grunt-owned components require separate written permission from Grunt AS,
+except as permitted by applicable law.
+
+Third-party components are governed by their respective licenses. Notices
+for bundled HTML components are in skills/html/THIRD-PARTY-NOTICES.txt.
